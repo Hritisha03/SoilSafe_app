@@ -12,7 +12,6 @@ import os
 import traceback
 
 
-# Handle flask_cors import gracefully
 try:
     from flask_cors import CORS
 except ImportError:

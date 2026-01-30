@@ -15,8 +15,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 
-# Note: Ensure scikit-learn is installed: pip install scikit-learn numpy pandas
-
 
 def make_synthetic_dataset(path=None, n=1000, random_state=42):
     rng = np.random.RandomState(random_state)

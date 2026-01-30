@@ -13,7 +13,7 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('SoilSafe', style: Theme.of(context).textTheme.headline4),
+            Text('SoilSafe', style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 8),
             const Text(
                 'Assess post-flood soil risk quickly. Enter simple site data and get an easy-to-understand safety level (Low / Medium / High).'),
