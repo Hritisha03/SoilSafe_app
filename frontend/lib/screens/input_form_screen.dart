@@ -179,122 +179,158 @@ class _InputFormScreenState extends State<InputFormScreen> {
           key: _formKey,
           child: ListView(
             children: [
-              DropdownButtonFormField<String>(
-                initialValue: _soilType,
-                items: ['clay', 'silt', 'sand', 'loam'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _soilType = v ?? 'clay'),
-                decoration: const InputDecoration(labelText: 'Soil type'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                initialValue: _floodFreq.toString(),
-                decoration: const InputDecoration(labelText: 'Flood frequency (times)'),
-                keyboardType: TextInputType.number,
-                validator: (v) => (v == null || v.isEmpty) ? 'Enter flood frequency' : null,
-                onSaved: (v) => _floodFreq = int.tryParse(v ?? '1') ?? 1,
-              ),
-              const SizedBox(height: 8),
-              Slider(
-                value: _rainfall,
-                min: 0,
-                max: 400,
-                divisions: 40,
-                label: '${_rainfall.round()} mm',
-                onChanged: (v) => setState(() => _rainfall = v),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _elevation,
-                items: ['low', 'mid', 'high'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _elevation = v ?? 'low'),
-                decoration: const InputDecoration(labelText: 'Elevation category'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Distance from river (km) - optional'),
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                onSaved: (v) => _distance = (v == null || v.isEmpty) ? null : double.tryParse(v),
-              ),
-              const SizedBox(height: 12),
-              // Location controls
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.my_location),
-                      label: const Text('Detect my location now'),
-                      onPressed: () async {
-                        setState(() => _detectingLocation = true);
-                        try {
-                          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                          if (!serviceEnabled) {
-                            throw Exception('Location services are disabled.');
-                          }
-                          LocationPermission permission = await Geolocator.checkPermission();
-                          if (permission == LocationPermission.denied) {
-                            permission = await Geolocator.requestPermission();
-                          }
-                          if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-                            throw Exception('Location permission denied.');
-                          }
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Soil type
+                      DropdownButtonFormField<String>(
+                        initialValue: _soilType,
+                        items: ['clay', 'silt', 'sand', 'loam'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        onChanged: (v) => setState(() => _soilType = v ?? 'clay'),
+                        decoration: InputDecoration(labelText: 'Soil type', prefixIcon: const Icon(Icons.terrain), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                      ),
+                      const SizedBox(height: 12),
 
-                          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-                          _onPosition(pos);
-                        } catch (e) {
-                          if (!mounted) return;
-                          showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
-                        } finally {
-                          setState(() => _detectingLocation = false);
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SwitchListTile(
-                      title: const Text('Track my location'),
-                      value: _trackingLocation,
-                      onChanged: (v) async {
-                        if (v) {
-                          // start tracking
-                          try {
-                            bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                            if (!serviceEnabled) throw Exception('Location services are disabled.');
-                            LocationPermission permission = await Geolocator.checkPermission();
-                            if (permission == LocationPermission.denied) {
-                              permission = await Geolocator.requestPermission();
-                            }
-                            if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) throw Exception('Location permission denied.');
+                      // Flood frequency
+                      TextFormField(
+                        initialValue: _floodFreq.toString(),
+                        decoration: InputDecoration(labelText: 'Flood frequency (times)', prefixIcon: const Icon(Icons.water_drop), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                        keyboardType: TextInputType.number,
+                        validator: (v) => (v == null || v.isEmpty) ? 'Enter flood frequency' : null,
+                        onSaved: (v) => _floodFreq = int.tryParse(v ?? '1') ?? 1,
+                      ),
+                      const SizedBox(height: 12),
 
-                            setState(() => _trackingLocation = true);
-                            _positionStreamSub = Geolocator.getPositionStream(locationSettings: LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 50)).listen((pos) => _onPosition(pos));
-                          } catch (e) {
-                            setState(() => _trackingLocation = false);
-                            if (!mounted) return;
-                            showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
-                          }
-                        } else {
-                          // stop tracking
-                          await _positionStreamSub?.cancel();
-                          _positionStreamSub = null;
-                          setState(() => _trackingLocation = false);
-                        }
-                      },
-                    ),
+                      // Rainfall slider with label
+                      Row(
+                        children: [
+                          const Padding(padding: EdgeInsets.only(right: 8), child: Icon(Icons.cloud, color: Colors.blueAccent)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Rainfall intensity: ${_rainfall.round()} mm', style: Theme.of(context).textTheme.bodyMedium),
+                                Slider(value: _rainfall, min: 0, max: 400, divisions: 40, label: '${_rainfall.round()} mm', onChanged: (v) => setState(() => _rainfall = v)),
+                              ],
+                            ),
+                          )
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Elevation
+                      DropdownButtonFormField<String>(
+                        initialValue: _elevation,
+                        items: ['low', 'mid', 'high'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        onChanged: (v) => setState(() => _elevation = v ?? 'low'),
+                        decoration: InputDecoration(labelText: 'Elevation category', prefixIcon: const Icon(Icons.landscape), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Distance
+                      TextFormField(
+                        decoration: InputDecoration(labelText: 'Distance from river (km) - optional', prefixIcon: const Icon(Icons.place), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        onSaved: (v) => _distance = (v == null || v.isEmpty) ? null : double.tryParse(v),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Location controls
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: _detectingLocation ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.my_location),
+                              label: Text(_detectingLocation ? 'Detecting...' : 'Detect my location'),
+                              onPressed: _detectingLocation
+                                  ? null
+                                  : () async {
+                                      setState(() => _detectingLocation = true);
+                                      try {
+                                        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                                        if (!serviceEnabled) {
+                                          throw Exception('Location services are disabled.');
+                                        }
+                                        LocationPermission permission = await Geolocator.checkPermission();
+                                        if (permission == LocationPermission.denied) {
+                                          permission = await Geolocator.requestPermission();
+                                        }
+                                        if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+                                          throw Exception('Location permission denied.');
+                                        }
+
+                                        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+                                        _onPosition(pos);
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
+                                      } finally {
+                                        setState(() => _detectingLocation = false);
+                                      }
+                                    },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SwitchListTile(
+                              title: const Text('Track my location'),
+                              value: _trackingLocation,
+                              onChanged: (v) async {
+                                if (v) {
+                                  // start tracking
+                                  try {
+                                    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                                    if (!serviceEnabled) throw Exception('Location services are disabled.');
+                                    LocationPermission permission = await Geolocator.checkPermission();
+                                    if (permission == LocationPermission.denied) {
+                                      permission = await Geolocator.requestPermission();
+                                    }
+                                    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) throw Exception('Location permission denied.');
+
+                                    setState(() => _trackingLocation = true);
+                                    _positionStreamSub = Geolocator.getPositionStream(locationSettings: LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 50)).listen((pos) => _onPosition(pos));
+                                  } catch (e) {
+                                    setState(() => _trackingLocation = false);
+                                    if (!mounted) return;
+                                    showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
+                                  }
+                                } else {
+                                  // stop tracking
+                                  await _positionStreamSub?.cancel();
+                                  _positionStreamSub = null;
+                                  setState(() => _trackingLocation = false);
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+                      Text(_latitude != null ? 'Lat: ${_latitude!.toStringAsFixed(4)}, Lon: ${_longitude!.toStringAsFixed(4)}' : 'No location detected', style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+                      const SizedBox(height: 8),
+                      if (_region != null) Text('Detected place: $_region', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+
+                      const SizedBox(height: 12),
+
+                      // Flood region selector (India-only)
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedFloodRegion,
+                        items: floodRegions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        onChanged: (v) => setState(() => _selectedFloodRegion = v),
+                        decoration: InputDecoration(labelText: 'Flood region (India) - required', prefixIcon: const Icon(Icons.location_on), helperText: 'Select the flood-prone region in India', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                        validator: (v) => (v == null || v.isEmpty) ? 'Select a flood-oriented region in India' : null,
+                        onSaved: (v) => _selectedFloodRegion = v,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(_latitude != null ? 'Lat: ${_latitude!.toStringAsFixed(4)}, Lon: ${_longitude!.toStringAsFixed(4)}' : 'No location detected', style: Theme.of(context).textTheme.bodySmall!, textAlign: TextAlign.center),
-              const SizedBox(height: 8),
-              // Flood region selector (India-only)
-              DropdownButtonFormField<String>(
-                value: _selectedFloodRegion,
-                items: floodRegions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _selectedFloodRegion = v),
-                decoration: const InputDecoration(labelText: 'Flood region (India) - required'),
-                validator: (v) => (v == null || v.isEmpty) ? 'Select a flood-oriented region in India' : null,
-                onSaved: (v) => _selectedFloodRegion = v,
+                ),
               ),
               const SizedBox(height: 16),
               _loading

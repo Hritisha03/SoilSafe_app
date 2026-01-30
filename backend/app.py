@@ -13,9 +13,9 @@ import traceback
 
 
 try:
-    from flask_cors import CORS
+    from flask_cors import CORS  # type: ignore
 except ImportError:
-    def CORS(app):
+    def CORS(app):  # type: ignore
         pass
 
 MODEL_PATH = os.environ.get("SOIL_MODEL_PATH", "model/soil_model.pkl")
