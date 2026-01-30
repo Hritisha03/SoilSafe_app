@@ -37,8 +37,11 @@ API
   - rainfall_intensity (float)
   - elevation_category ("low"|"mid"|"high")
   - distance_from_river (float, optional)
+  - latitude (float, optional)  # optional: user/device location
+  - longitude (float, optional) # optional: user/device location
+  - region (string, optional)   # optional: region name provided by user or auto-detected
 
-Returns JSON: {"risk":"High|Medium|Low","probabilities":{...},"explanation":"..."}
+Returns JSON: {"risk":"High|Medium|Low","probabilities":{...},"explanation":"...", "region":..., "location":{...}}
 
 Notes
 

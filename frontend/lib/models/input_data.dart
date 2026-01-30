@@ -4,6 +4,9 @@ class InputData {
   double rainfallIntensity;
   String elevationCategory;
   double? distanceFromRiver;
+  double? latitude;
+  double? longitude;
+  String? region;
 
   InputData({
     required this.soilType,
@@ -11,6 +14,9 @@ class InputData {
     required this.rainfallIntensity,
     required this.elevationCategory,
     this.distanceFromRiver,
+    this.latitude,
+    this.longitude,
+    this.region,
   });
 
   Map<String, dynamic> toJson() => {
@@ -19,5 +25,8 @@ class InputData {
         'rainfall_intensity': rainfallIntensity,
         'elevation_category': elevationCategory,
         'distance_from_river': distanceFromRiver ?? 0.0,
+        'latitude': latitude,
+        'longitude': longitude,
+        'region': region,
       };
 }

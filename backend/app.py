@@ -63,6 +63,7 @@ def predict():
 
         # Build single-row DataFrame
         import pandas as pd
+        # Keep only the features used by the model for prediction. Accept optional location/region for context.
         row = {
             "soil_type": data.get("soil_type"),
             "flood_frequency": float(data.get("flood_frequency")),
@@ -81,9 +82,28 @@ def predict():
         except Exception:
             probs = None
 
-        explanation = "Soil risk predicted based on flood frequency, rainfall intensity, soil type and elevation. For details, examine feature importances in training code."
+        lat = data.get("latitude")
+        lon = data.get("longitude")
+        region = data.get("region")
 
-        return jsonify({"risk": pred, "probabilities": probs, "explanation": explanation}), 200
+        explanation = (
+            "Soil risk predicted based on flood frequency, rainfall intensity, soil type and elevation."
+        )
+        if region:
+            explanation += f" Region provided: {region}."
+        if lat and lon:
+            explanation += " Location coordinates were provided and used for context." 
+
+        resp = {"risk": pred, "probabilities": probs, "explanation": explanation}
+        if region:
+            resp["region"] = region
+        if lat and lon:
+            try:
+                resp["location"] = {"latitude": float(lat), "longitude": float(lon)}
+            except Exception:
+                resp["location"] = {"raw_lat": lat, "raw_lon": lon}
+
+        return jsonify(resp), 200
 
     except Exception as e:
         traceback.print_exc()
