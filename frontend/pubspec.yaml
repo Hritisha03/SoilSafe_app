@@ -1,0 +1,16 @@
+name: soilsafe
+description: A demo app for SoilSafe post-flood soil risk assessment
+publish_to: 'none'
+version: 0.0.1
+environment:
+  sdk: '>=2.18.0 <3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^0.13.6
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

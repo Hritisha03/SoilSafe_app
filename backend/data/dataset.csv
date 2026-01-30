@@ -1,0 +1,11 @@
+soil_type,flood_frequency,rainfall_intensity,elevation_category,distance_from_river,risk_label
+clay,4,120,low,0.3,High
+sand,1,40,high,5.0,Low
+loam,2,95,mid,1.2,Medium
+silt,3,110,low,0.5,High
+sand,1,30,high,10.0,Low
+clay,5,150,low,0.1,High
+loam,2,60,mid,2.0,Medium
+silt,4,130,low,0.8,High
+loam,1,45,high,6.0,Low
+sand,3,80,mid,3.5,Medium
