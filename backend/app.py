@@ -19,12 +19,29 @@ except ImportError:
     def CORS(app):
         pass
 
-MODEL_PATH = os.environ.get("SOIL_MODEL_PATH", os.path.join(os.path.dirname(__file__), "model/soil_model.pkl"))
+# Prefer the default model path near this module if it exists (robust against env var mistakes)
+_default_model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "model/soil_model.pkl"))
+_env_model = os.environ.get("SOIL_MODEL_PATH")
+if os.path.exists(_default_model_path):
+    MODEL_PATH = _default_model_path
+elif _env_model:
+    # If env var provided, resolve both absolute and relative candidates
+    cand1 = os.path.abspath(_env_model)
+    cand2 = os.path.abspath(os.path.join(os.path.dirname(__file__), _env_model))
+    if os.path.exists(cand1):
+        MODEL_PATH = cand1
+    elif os.path.exists(cand2):
+        MODEL_PATH = cand2
+    else:
+        # fallback to cand1 (absoluteified env var)
+        MODEL_PATH = cand1
+else:
+    MODEL_PATH = _default_model_path
 
 app = Flask(__name__)
 CORS(app)
 
-# Load model at startup
+# Load model at startup (if available), and provide runtime reload if needed
 model = None
 if os.path.exists(MODEL_PATH):
     try:
@@ -34,6 +51,18 @@ if os.path.exists(MODEL_PATH):
         app.logger.error("Failed to load model: %s", e)
 else:
     app.logger.warning("Model file not found. Run `python model/train_model.py` to create it.")
+
+
+def _ensure_model_loaded():
+    """Attempt to load the model at runtime if it wasn't available at startup."""
+    global model
+    if model is None and os.path.exists(MODEL_PATH):
+        try:
+            model = joblib.load(MODEL_PATH)
+            app.logger.info(f"Runtime-loaded model from {MODEL_PATH}")
+        except Exception as e:
+            app.logger.error("Runtime model load failed: %s", e)
+
 
 
 @app.route("/health", methods=["GET"])
@@ -134,6 +163,194 @@ def _recommendation_for_risk(risk_level):
     )
 
 
+# ---------------------------------------------------------------------------
+# Location -> feature inference (prototype / rule-based)
+# ---------------------------------------------------------------------------
+import json
+
+RULES_PATH = os.path.join(os.path.dirname(__file__), 'data/region_rules.json')
+try:
+    with open(RULES_PATH, 'r', encoding='utf8') as fh:
+        REGION_RULES = json.load(fh)
+        app.logger.info(f"Loaded {len(REGION_RULES)} region rules from {RULES_PATH}")
+except Exception:
+    REGION_RULES = []
+    app.logger.warning("No region rules loaded; falling back to default heuristics.")
+
+
+def _infer_features_from_location(lat, lon, region_name=None):
+    """Infer soil/flood features from latitude/longitude using simple rules.
+    Returns a dict suitable for model input and a chosen region name.
+    """
+    # Try rule matching by bounding box
+    for r in REGION_RULES:
+        try:
+            if lat >= float(r.get('min_lat', -90)) and lat <= float(r.get('max_lat', 90)) and lon >= float(r.get('min_lon', -180)) and lon <= float(r.get('max_lon', 180)):
+                return ({
+                    'soil_type': r.get('soil_type', 'silt'),
+                    'rainfall_intensity': float(r.get('rainfall_intensity', 100)),
+                    'flood_frequency': float(r.get('flood_frequency', 1)),
+                    'elevation_category': r.get('elevation_category', 'low'),
+                    'distance_from_river': float(r.get('distance_from_river', 1.0)),
+                }, r.get('name'))
+        except Exception:
+            continue
+
+    # Fallback heuristics (simple north/south & coastal check)
+    soil = 'silt'
+    rainfall = 100.0
+    flood_freq = 1.0
+    elev = 'mid'
+    dist = 2.0
+
+    # Coastal proximity heuristic: if longitude is close to typical coastlines (simplified)
+    if abs(lon) < 100 and (lat < 22 or lat > 8):
+        soil = 'clay'
+        rainfall = 180.0
+        flood_freq = 3.0
+        elev = 'low'
+        dist = 0.5
+
+    # Northern plains heuristic
+    if lat >= 24 and lat <= 29:
+        soil = 'silt'
+        rainfall = 120.0
+        flood_freq = 2.0
+        elev = 'low'
+        dist = 1.0
+
+    # Hill heuristic
+    if lat > 28:
+        soil = 'sandy'
+        rainfall = 80.0
+        flood_freq = 1.0
+        elev = 'high'
+        dist = 3.0
+
+    return ({
+        'soil_type': soil,
+        'rainfall_intensity': rainfall,
+        'flood_frequency': flood_freq,
+        'elevation_category': elev,
+        'distance_from_river': dist,
+    }, region_name)
+
+
+@app.route('/api/v1/predict-location', methods=['POST'])
+def predict_by_location():
+    """Accepts JSON { latitude, longitude, region (optional) } and returns the same structured response as predict_v1.
+
+    This endpoint derives approximate features from the provided coordinates using a rule-based mapping (for prototype/academic use only).
+    """
+    global model
+    try:
+        data = request.get_json(force=True)
+        lat = data.get('latitude')
+        lon = data.get('longitude')
+        region_name = data.get('region')
+        if lat is None or lon is None:
+            return jsonify({'error': 'Missing latitude or longitude'}), 400
+
+        try:
+            lat = float(lat)
+            lon = float(lon)
+        except Exception:
+            return jsonify({'error': 'Latitude and longitude must be numeric'}), 400
+
+        # Derive features
+        row_features, inferred_region = _infer_features_from_location(lat, lon, region_name)
+        # attach metadata
+        row_features_meta = dict(row_features)
+        row_features_meta['latitude'] = lat
+        row_features_meta['longitude'] = lon
+        if inferred_region:
+            row_features_meta['region'] = inferred_region
+
+        # Build input and reuse same prediction logic as predict_v1
+        import pandas as pd
+        X = pd.DataFrame([{
+            'soil_type': row_features['soil_type'],
+            'flood_frequency': float(row_features['flood_frequency']),
+            'rainfall_intensity': float(row_features['rainfall_intensity']),
+            'elevation_category': row_features['elevation_category'],
+            'distance_from_river': float(row_features.get('distance_from_river', 0.0)),
+        }])
+
+        _ensure_model_loaded()
+        if model is None:
+            return jsonify({"error": "Model not loaded. Train and save a model with model/train_model.py"}), 500
+
+        if isinstance(model, dict):
+            rf = model.get('rf')
+            dt = model.get('dt')
+            pre = rf.named_steps['pre'] if hasattr(rf, 'named_steps') else None
+            rf_clf = rf.named_steps['clf'] if hasattr(rf, 'named_steps') else rf
+            importances = _aggregate_importances(rf, pre, rf_clf) if pre is not None else {}
+        else:
+            rf = model
+            dt = None
+            pre = rf.named_steps['pre'] if hasattr(rf, 'named_steps') else None
+            rf_clf = rf.named_steps['clf'] if hasattr(rf, 'named_steps') else rf
+            importances = _aggregate_importances(rf, pre, rf_clf) if pre is not None else {}
+
+        try:
+            proba = rf.predict_proba(X)[0]
+            classes = list(rf.classes_)
+            probs = {c: float(p) for c, p in zip(classes, proba)}
+            pred = rf.predict(X)[0]
+            confidence = float(probs.get(pred, max(probs.values())))
+        except Exception:
+            pred = rf.predict(X)[0]
+            probs = None
+            confidence = 1.0
+
+        dt_info = None
+        agree = None
+        if dt is not None:
+            try:
+                dt_pred = dt.predict(X)[0]
+                try:
+                    dt_proba = dt.predict_proba(X)[0]
+                    dt_conf = float(dt_proba[list(dt.classes_).index(dt_pred)])
+                except Exception:
+                    dt_conf = 1.0
+                dt_info = {"prediction": dt_pred, "confidence": dt_conf}
+                agree = (str(dt_pred).lower() == str(pred).lower())
+            except Exception:
+                dt_info = None
+
+        explanation = _simple_explanation(row_features, importances)
+        explanation += " Predictions are indicative and based on regional data (prototype)."
+        recommendation = _recommendation_for_risk(pred)
+
+        fi_list = sorted([(k, float(v)) for k, v in importances.items()], key=lambda x: x[1], reverse=True)
+
+        resp = {
+            "risk_level": pred,
+            "confidence": confidence,
+            "probabilities": probs,
+            "explanation": explanation,
+            "recommendation": recommendation,
+            "feature_importances": [{"feature": f, "importance": imp} for f, imp in fi_list],
+            "influencing_factors": explanation.split('. '),
+            "inferred_features": row_features_meta,
+            "disclaimer": "Predictions are indicative and based on regional data. Not a substitute for on-site testing.",
+        }
+        if dt_info is not None:
+            resp['model_comparison'] = {"decision_tree": dt_info, "agree": agree}
+
+        if inferred_region:
+            resp['region'] = inferred_region
+
+        resp['location'] = {"latitude": lat, "longitude": lon}
+
+        return jsonify(resp), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Server error", "details": str(e)}), 500
+
+
 @app.route('/api/v1/predict', methods=['POST'])
 def predict_v1():
     """Versioned predict endpoint. Returns structured JSON with explanation and recommendations."""
@@ -157,6 +374,7 @@ def predict_v1():
         }
         X = pd.DataFrame([row])
 
+        _ensure_model_loaded()
         if model is None:
             return jsonify({"error": "Model not loaded. Train and save a model with model/train_model.py"}), 500
 

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
-import '../models/input_data.dart';
 import '../models/prediction_result.dart';
+import '../models/input_data.dart';
 
 class ApiService {
   // Support overriding at build/run time with --dart-define=API_BASE=http://host:5000
@@ -22,6 +22,27 @@ class ApiService {
           .post(uri, body: jsonEncode(data.toJson()), headers: {'Content-Type': 'application/json'})
           .timeout(const Duration(seconds: 10));
 
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body);
+        return PredictionResult.fromJson(json);
+      } else {
+        throw Exception('API error: ${res.statusCode} ${res.body}');
+      }
+    } catch (e) {
+      throw Exception('Failed to call backend at $baseUrl. Ensure the backend is running and reachable from this device. Details: $e');
+    }
+  }
+
+  // New: predict using only latitude and longitude. Optionally include a human-readable region if available.
+  static Future<PredictionResult> predictByLocation(double latitude, double longitude, {String? region}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/predict-location');
+    final body = <String, dynamic>{'latitude': latitude, 'longitude': longitude};
+    if (region != null) body['region'] = region;
+
+    try {
+      final res = await http
+          .post(uri, body: jsonEncode(body), headers: {'Content-Type': 'application/json'})
+          .timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
         return PredictionResult.fromJson(json);

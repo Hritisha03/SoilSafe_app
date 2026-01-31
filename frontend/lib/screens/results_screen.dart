@@ -195,6 +195,22 @@ class ResultsScreen extends StatelessWidget {
             ),
           ),
 
+          const SizedBox(height: 12),
+
+          // Inferred features (when prediction originated from GPS)
+          if (result.inferredFeatures != null && result.inferredFeatures!.isNotEmpty) Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Inferred features (regional approximation)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                ...result.inferredFeatures!.entries.map((e) => Padding(padding: const EdgeInsets.symmetric(vertical:4.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(e.key), Text(e.value.toString())]))).toList(),
+              ]),
+            ),
+          ),
+
           const SizedBox(height: 16),
 
           if (result.probabilities != null) ...[
@@ -226,7 +242,7 @@ class ResultsScreen extends StatelessWidget {
           ]),
 
           const SizedBox(height: 18),
-          Text('Disclaimer: This tool provides guidance only. Always confirm with a site inspection for safety-critical decisions.', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+          Text(result.disclaimer ?? 'Disclaimer: This tool provides guidance only. Always confirm with a site inspection for safety-critical decisions.', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
         ]),
       ),
     );

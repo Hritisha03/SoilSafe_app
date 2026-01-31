@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Ganges Plains",
+    "min_lat": 24.0,
+    "max_lat": 28.0,
+    "min_lon": 80.0,
+    "max_lon": 88.0,
+    "soil_type": "silt",
+    "rainfall_intensity": 120,
+    "flood_frequency": 3,
+    "elevation_category": "low",
+    "distance_from_river": 0.5
+  },
+  {
+    "name": "Coastal Odisha",
+    "min_lat": 18.0,
+    "max_lat": 21.0,
+    "min_lon": 83.0,
+    "max_lon": 87.0,
+    "soil_type": "clay",
+    "rainfall_intensity": 200,
+    "flood_frequency": 4,
+    "elevation_category": "low",
+    "distance_from_river": 0.2
+  },
+  {
+    "name": "Western Ghats",
+    "min_lat": 8.0,
+    "max_lat": 16.0,
+    "min_lon": 73.0,
+    "max_lon": 77.0,
+    "soil_type": "loam",
+    "rainfall_intensity": 300,
+    "flood_frequency": 2,
+    "elevation_category": "mid",
+    "distance_from_river": 2.0
+  },
+  {
+    "name": "Himalayan Foothills",
+    "min_lat": 28.0,
+    "max_lat": 34.0,
+    "min_lon": 72.0,
+    "max_lon": 91.0,
+    "soil_type": "sandy",
+    "rainfall_intensity": 80,
+    "flood_frequency": 1,
+    "elevation_category": "high",
+    "distance_from_river": 5.0
+  }
+]

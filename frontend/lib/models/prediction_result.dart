@@ -8,8 +8,10 @@ class PredictionResult {
   final List<String>? influencingFactors;
   final String? region;
   final Map<String, dynamic>? location; // {'latitude':.., 'longitude':..}
+  final Map<String, dynamic>? inferredFeatures;
+  final String? disclaimer;
 
-  PredictionResult({required this.risk, this.confidence, this.probabilities, required this.explanation, this.recommendation, this.featureImportances, this.influencingFactors, this.region, this.location});
+  PredictionResult({required this.risk, this.confidence, this.probabilities, required this.explanation, this.recommendation, this.featureImportances, this.influencingFactors, this.region, this.location, this.inferredFeatures, this.disclaimer});
 
   factory PredictionResult.fromJson(Map<String, dynamic> json) {
     return PredictionResult(
@@ -22,6 +24,8 @@ class PredictionResult {
       influencingFactors: json['influencing_factors'] != null ? List<String>.from(json['influencing_factors'].map((e) => e.toString())) : null,
       region: json['region'],
       location: json['location'] != null ? Map<String, dynamic>.from(json['location']) : null,
+      inferredFeatures: json['inferred_features'] != null ? Map<String, dynamic>.from(json['inferred_features']) : null,
+      disclaimer: json['disclaimer'],
     );
   }
 }

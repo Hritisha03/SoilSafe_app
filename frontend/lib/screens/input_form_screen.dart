@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import '../models/input_data.dart';
 import '../services/api_service.dart';
 import 'results_screen.dart';
 
@@ -13,93 +12,17 @@ class InputFormScreen extends StatefulWidget {
 }
 
 class _InputFormScreenState extends State<InputFormScreen> {
-  final _formKey = GlobalKey<FormState>();
-  String _soilType = 'clay';
-  int _floodFreq = 1;
-  double _rainfall = 50.0;
-  String _elevation = 'low';
-  double? _distance;
-
-  // Location fields and flood-focused regions (India-only enforcement)
+  // We now accept only location (GPS) from the user. All other features are inferred server-side.
   double? _latitude;
   double? _longitude;
   String? _region;
-
-  // Curated flood-oriented regions for India (demo purposes)
-  static const List<String> floodRegions = [
-    'Ganges-Brahmaputra Delta',
-    'Brahmaputra Valley (Assam)',
-    'Ganga Plains (UP/Bihar)',
-    'West Bengal Coast',
-    'Odisha Coast & Mahanadi',
-    'Coastal Andhra & Godavari Basin',
-    'Kerala (Monsoon-prone)',
-    'Konkan & Goa',
-    'Central India Flood Plains',
-    'Maharashtra (Rivers & Coast)',
-    'Gujarat Coast',
-    'North-East Hill Flood Zones',
-    'Himachal / Uttarakhand (Hill floods)'
-  ];
-
-  String? _selectedFloodRegion;
 
   bool _loading = false;
   bool _detectingLocation = false;
   bool _trackingLocation = false;
   StreamSubscription<Position>? _positionStreamSub;
 
-  void _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    _formKey.currentState!.save();
 
-    final input = InputData(
-        soilType: _soilType,
-        floodFrequency: _floodFreq,
-        rainfallIntensity: _rainfall,
-        elevationCategory: _elevation,
-        distanceFromRiver: _distance,
-        latitude: _latitude,
-        longitude: _longitude,
-        region: _selectedFloodRegion);
-
-
-    // Enforce India-only when a device location is present
-    if (_latitude != null && _longitude != null && !_isInIndia(_latitude!, _longitude!)) {
-      showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location outside India'), content: const Text('Detected location is outside India. Submission is restricted to India-only regions.'), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
-      return;
-    }
-
-    // Require a flood-oriented region (India-only list)
-    if (_selectedFloodRegion == null || _selectedFloodRegion!.isEmpty) {
-      showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Region required'), content: const Text('Please select a flood-oriented region in India before submitting.'), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
-      return;
-    }
-
-    setState(() => _loading = true);
-    try {
-      final res = await ApiService.predict(input);
-      if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ResultsScreen(result: res)));
-    } catch (e) {
-      // Show a dialog with helpful troubleshooting steps for network/CORS issues
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Network Error'),
-          content: Text(
-              'Could not reach the backend at ${ApiService.baseUrl}.\n\nPlease make sure the backend is running (see backend/README).\nIf you are running the app on the web, use http://127.0.0.1:5000; on an Android emulator use http://10.0.2.2:5000.\n\nDetails: $e'),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
-          ],
-        ),
-      );
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      setState(() => _loading = false);
-    }
-  }
 
   bool _isInIndia(double lat, double lon) {
     // India bounding box (approximate)
@@ -134,8 +57,8 @@ class _InputFormScreenState extends State<InputFormScreen> {
       final name = await ApiService.reverseGeocode(lat, lon);
       final mapped = _mapToFloodRegion(name);
       if (mapped != null) {
-        setState(() => _selectedFloodRegion = mapped);
-      } else if (name != null && _selectedFloodRegion == null) {
+        setState(() => _region = mapped);
+      } else if (name != null && _region == null) {
         // If reverse geocode returns a nearby place name, we set region as that name (best-effort)
         setState(() => _region = name);
       }
@@ -172,172 +95,100 @@ class _InputFormScreenState extends State<InputFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Input Data')),
+      appBar: AppBar(title: const Text('Assess my location')),
       body: Padding(
         padding: const EdgeInsets.all(12.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Soil type
-                      DropdownButtonFormField<String>(
-                        initialValue: _soilType,
-                        items: ['clay', 'silt', 'sand', 'loam'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (v) => setState(() => _soilType = v ?? 'clay'),
-                        decoration: InputDecoration(labelText: 'Soil type', prefixIcon: const Icon(Icons.terrain), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
-                      ),
-                      const SizedBox(height: 12),
+        child: ListView(
+          children: [
+            Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18.0, horizontal: 14.0),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  const Text('Location-based assessment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Only your GPS location is required. We infer soil and flood parameters from regional data to provide a quick triage.', style: Theme.of(context).textTheme.bodyMedium),
 
-                      // Flood frequency
-                      TextFormField(
-                        initialValue: _floodFreq.toString(),
-                        decoration: InputDecoration(labelText: 'Flood frequency (times)', prefixIcon: const Icon(Icons.water_drop), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
-                        keyboardType: TextInputType.number,
-                        validator: (v) => (v == null || v.isEmpty) ? 'Enter flood frequency' : null,
-                        onSaved: (v) => _floodFreq = int.tryParse(v ?? '1') ?? 1,
-                      ),
-                      const SizedBox(height: 12),
+                  const SizedBox(height: 12),
 
-                      // Rainfall slider with label
-                      Row(
-                        children: [
-                          const Padding(padding: EdgeInsets.only(right: 8), child: Icon(Icons.cloud, color: Colors.blueAccent)),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Rainfall intensity: ${_rainfall.round()} mm', style: Theme.of(context).textTheme.bodyMedium),
-                                Slider(value: _rainfall, min: 0, max: 400, divisions: 40, label: '${_rainfall.round()} mm', onChanged: (v) => setState(() => _rainfall = v)),
-                              ],
-                            ),
-                          )
-                        ],
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Elevation
-                      DropdownButtonFormField<String>(
-                        initialValue: _elevation,
-                        items: ['low', 'mid', 'high'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (v) => setState(() => _elevation = v ?? 'low'),
-                        decoration: InputDecoration(labelText: 'Elevation category', prefixIcon: const Icon(Icons.landscape), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Distance
-                      TextFormField(
-                        decoration: InputDecoration(labelText: 'Distance from river (km) - optional', prefixIcon: const Icon(Icons.place), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        onSaved: (v) => _distance = (v == null || v.isEmpty) ? null : double.tryParse(v),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Location controls
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              icon: _detectingLocation ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.my_location),
-                              label: Text(_detectingLocation ? 'Detecting...' : 'Detect my location'),
-                              onPressed: _detectingLocation
-                                  ? null
-                                  : () async {
-                                      setState(() => _detectingLocation = true);
-                                      try {
-                                        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                                        if (!serviceEnabled) {
-                                          throw Exception('Location services are disabled.');
-                                        }
-                                        LocationPermission permission = await Geolocator.checkPermission();
-                                        if (permission == LocationPermission.denied) {
-                                          permission = await Geolocator.requestPermission();
-                                        }
-                                        if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-                                          throw Exception('Location permission denied.');
-                                        }
-
-                                        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-                                        _onPosition(pos);
-                                      } catch (e) {
-                                        if (!mounted) return;
-                                        showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
-                                      } finally {
-                                        setState(() => _detectingLocation = false);
-                                      }
-                                    },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SwitchListTile(
-                              title: const Text('Track my location'),
-                              value: _trackingLocation,
-                              onChanged: (v) async {
-                                if (v) {
-                                  // start tracking
-                                  try {
-                                    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                                    if (!serviceEnabled) throw Exception('Location services are disabled.');
-                                    LocationPermission permission = await Geolocator.checkPermission();
-                                    if (permission == LocationPermission.denied) {
-                                      permission = await Geolocator.requestPermission();
-                                    }
-                                    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) throw Exception('Location permission denied.');
-
-                                    setState(() => _trackingLocation = true);
-                                    _positionStreamSub = Geolocator.getPositionStream(locationSettings: LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 50)).listen((pos) => _onPosition(pos));
-                                  } catch (e) {
-                                    setState(() => _trackingLocation = false);
-                                    if (!mounted) return;
-                                    showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
-                                  }
-                                } else {
-                                  // stop tracking
-                                  await _positionStreamSub?.cancel();
-                                  _positionStreamSub = null;
-                                  setState(() => _trackingLocation = false);
+                  Row(children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: _detectingLocation ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.my_location),
+                        label: Text(_detectingLocation ? 'Detecting...' : 'Detect my location'),
+                        onPressed: _detectingLocation
+                            ? null
+                            : () async {
+                                setState(() => _detectingLocation = true);
+                                try {
+                                  bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                                  if (!serviceEnabled) throw Exception('Location services are disabled.');
+                                  LocationPermission permission = await Geolocator.checkPermission();
+                                  if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+                                  if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) throw Exception('Location permission denied.');
+                                  final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+                                  _onPosition(pos);
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
+                                } finally {
+                                  setState(() => _detectingLocation = false);
                                 }
                               },
-                            ),
-                          ),
-                        ],
                       ),
-
-                      const SizedBox(height: 12),
-                      Text(_latitude != null ? 'Lat: ${_latitude!.toStringAsFixed(4)}, Lon: ${_longitude!.toStringAsFixed(4)}' : 'No location detected', style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-                      const SizedBox(height: 8),
-                      if (_region != null) Text('Detected place: $_region', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
-
-                      const SizedBox(height: 12),
-
-                      // Flood region selector (India-only)
-                      DropdownButtonFormField<String>(
-                        initialValue: _selectedFloodRegion,
-                        items: floodRegions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (v) => setState(() => _selectedFloodRegion = v),
-                        decoration: InputDecoration(labelText: 'Flood region (India) - required', prefixIcon: const Icon(Icons.location_on), helperText: 'Select the flood-prone region in India', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Select a flood-oriented region in India' : null,
-                        onSaved: (v) => _selectedFloodRegion = v,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.info_outline),
+                        label: const Text('Why GPS only?'),
+                        onPressed: () => showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Why GPS only?'), content: const Text('For rapid post-flood triage we infer other parameters (rainfall, soil type) from regional datasets to minimize user burden. Predictions are indicative and not a substitute for on-site testing.'), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))])),
                       ),
-                    ],
-                  ),
-                ),
+                    )
+                  ]),
+
+                  const SizedBox(height: 12),
+                  Text(_latitude != null ? 'Lat: ${_latitude!.toStringAsFixed(4)}, Lon: ${_longitude!.toStringAsFixed(4)}' : 'No location detected', style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+                  if (_region != null) ...[
+                    const SizedBox(height: 6),
+                    Text('Detected place: $_region', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+                  ],
+
+                  const SizedBox(height: 16),
+                  _loading
+                      ? Column(children: const [CircularProgressIndicator(), SizedBox(height: 8), Text('Analyzing post-flood soil conditions...')])
+                      : ElevatedButton.icon(
+                          onPressed: () async {
+                            if (_latitude == null || _longitude == null) {
+                              showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Location required'), content: const Text('Please detect your location first using the Detect button.'), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
+                              return;
+                            }
+
+                            setState(() => _loading = true);
+                            try {
+                              // Optionally pass the detected region name to the backend if available
+                              final res = await ApiService.predictByLocation(_latitude!, _longitude!, region: _region);
+                              if (!mounted) return;
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => ResultsScreen(result: res)));
+                            } catch (e) {
+                              if (!mounted) return;
+                              showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Network Error'), content: Text('Could not reach the backend at ${ApiService.baseUrl}.\n\nDetails: $e'), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                            } finally {
+                              setState(() => _loading = false);
+                            }
+                          },
+                          icon: const Icon(Icons.search),
+                          label: const Text('Analyze my location'),
+                        )
+                ]),
               ),
-              const SizedBox(height: 16),
-              _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(onPressed: _submit, child: const Text('Submit'))
-            ],
-          ),
+            ),
+
+            const SizedBox(height: 12),
+            const Text('Note: Predictions are indicative and based on regional data. Not a substitute for on-site testing.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black54)),
+          ],
         ),
       ),
     );

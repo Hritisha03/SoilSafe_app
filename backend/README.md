@@ -55,6 +55,13 @@ Returns structured JSON:
 
 (An unversioned `/predict` endpoint also exists for backward compatibility and forwards to `/api/v1/predict`.)
 
+- POST /api/v1/predict-location -> Accepts JSON with fields:
+  - latitude (float)  -- required
+  - longitude (float) -- required
+  - region (string)   -- optional human-readable region hint
+
+  The endpoint uses an academic, rule-based regional lookup to infer model features (rainfall_intensity, flood_frequency, elevation_category, soil_type, distance_from_river) from latitude/longitude and returns the same structured JSON as `/api/v1/predict`, plus an `inferred_features` summary and `disclaimer`.
+
 Notes
 
 - The model is saved using joblib/pickle and loaded at startup.
