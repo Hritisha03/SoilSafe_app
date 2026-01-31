@@ -12,9 +12,11 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score, cross_val_predict
+from sklearn.metrics import classification_report, confusion_matrix
 import joblib
+import datetime
+import sklearn
 
 
 def _aggregate_importances_from_pipe(pipe, clf_name='clf'):
@@ -81,12 +83,21 @@ def make_synthetic_dataset(path=None, n=1000, random_state=42):
         else:
             label = "Low"
 
+        # infer categorical rainfall bucket for synthetic record
+        if ri < 20:
+            rc = 'Light'
+        elif ri <= 100:
+            rc = 'Moderate'
+        else:
+            rc = 'Heavy'
+
         rows.append({
             "soil_type": st,
             "flood_frequency": ff,
             "rainfall_intensity": ri,
             "elevation_category": ec,
             "distance_from_river": dfr,
+            "rainfall_category": rc,
             "risk_label": label,
         })
 
@@ -100,9 +111,15 @@ def make_synthetic_dataset(path=None, n=1000, random_state=42):
 def train_and_save(output_path: str, data_path: str = None):
     if data_path and os.path.exists(data_path):
         df = pd.read_csv(data_path)
+        # Accept both 'label' and 'risk_label' as target column
+        if 'label' in df.columns and 'risk_label' not in df.columns:
+            df = df.rename(columns={'label': 'risk_label'})
     else:
         print("No dataset found or path not provided. Generating synthetic dataset...")
         df = make_synthetic_dataset(n=2000)
+
+    if 'risk_label' not in df.columns:
+        raise ValueError('Dataset must include a target column named "risk_label" or "label"')
 
     X = df.drop(columns=["risk_label"])
     y = df["risk_label"]
@@ -115,16 +132,37 @@ def train_and_save(output_path: str, data_path: str = None):
         ("num", StandardScaler(), num_cols),
     ])
 
+    # show class distribution
+    class_counts = y.value_counts().to_dict()
+    print(f"Class distribution: {class_counts}")
+
     rf_pipe = Pipeline([
         ("pre", pre),
-        ("clf", RandomForestClassifier(n_estimators=150, random_state=42))
+        ("clf", RandomForestClassifier(n_estimators=200, random_state=42, class_weight='balanced'))
     ])
 
     dt_pipe = Pipeline([
         ("pre", pre),
-        ("clf", DecisionTreeClassifier(max_depth=6, random_state=42))
+        ("clf", DecisionTreeClassifier(max_depth=6, random_state=42, class_weight='balanced'))
     ])
 
+    # Cross-validation to estimate generalization
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    print("Running cross-validation (StratifiedKFold=5)...")
+    rf_cv_scores = cross_val_score(rf_pipe, X, y, cv=skf, scoring='balanced_accuracy')
+    dt_cv_scores = cross_val_score(dt_pipe, X, y, cv=skf, scoring='balanced_accuracy')
+    print(f"RF CV balanced_accuracy: mean={rf_cv_scores.mean():.4f}, std={rf_cv_scores.std():.4f}")
+    print(f"DT CV balanced_accuracy: mean={dt_cv_scores.mean():.4f}, std={dt_cv_scores.std():.4f}")
+
+    # Cross-validated predictions for aggregated report
+    rf_cv_preds = cross_val_predict(rf_pipe, X, y, cv=skf)
+    dt_cv_preds = cross_val_predict(dt_pipe, X, y, cv=skf)
+
+    print("Cross-validated RandomForest report:\n", classification_report(y, rf_cv_preds))
+    print("Cross-validated DecisionTree report:\n", classification_report(y, dt_cv_preds))
+    print("RandomForest confusion matrix:\n", confusion_matrix(y, rf_cv_preds))
+
+    # final train/test split and fit final models
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     rf_pipe.fit(X_train, y_train)
     dt_pipe.fit(X_train, y_train)
@@ -132,8 +170,11 @@ def train_and_save(output_path: str, data_path: str = None):
     rf_preds = rf_pipe.predict(X_test)
     dt_preds = dt_pipe.predict(X_test)
 
-    print("RandomForest performance:\n", classification_report(y_test, rf_preds))
-    print("DecisionTree performance:\n", classification_report(y_test, dt_preds))
+    test_report_rf = classification_report(y_test, rf_preds)
+    test_report_dt = classification_report(y_test, dt_preds)
+
+    print("RandomForest performance on hold-out test:\n", test_report_rf)
+    print("DecisionTree performance on hold-out test:\n", test_report_dt)
 
     # compute aggregated importances for readability
     rf_imps = _aggregate_importances_from_pipe(rf_pipe, clf_name='clf')
@@ -147,6 +188,18 @@ def train_and_save(output_path: str, data_path: str = None):
         'feature_importances': {
             'random_forest': rf_imps,
             'decision_tree': dt_imps
+        },
+        'training_details': {
+            'data_path': data_path or 'synthetic',
+            'n_samples': int(X.shape[0]),
+            'class_counts': class_counts,
+            'used_rainfall_category': 'rainfall_category' in df.columns,
+            'rf_cv_scores': rf_cv_scores.tolist(),
+            'dt_cv_scores': dt_cv_scores.tolist(),
+            'rf_test_report': test_report_rf,
+            'dt_test_report': test_report_dt,
+            'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+            'sklearn_version': sklearn.__version__,
         }
     }
 

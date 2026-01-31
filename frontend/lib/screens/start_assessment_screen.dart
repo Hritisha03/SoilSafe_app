@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
 import 'results_screen.dart';
 
@@ -15,6 +16,11 @@ class StartAssessmentScreen extends StatefulWidget {
 
 class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
   bool _isLoading = false;
+  bool _showManualEntry = false;
+  final _latController = TextEditingController();
+  final _lonController = TextEditingController();
+  final _placeNameController = TextEditingController();
+  String _manualEntryMode = 'coordinates'; // 'coordinates' or 'place'
 
   Future<void> _handlePrimary() async {
     setState(() => _isLoading = true);
@@ -44,15 +50,33 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
       }
 
       // Get precise location (test hook or real geolocator)
-      Map<String, double> loc;
+      Map<String, double>? loc;
       if (widget.getLocation != null) {
         loc = await widget.getLocation!();
       } else {
-        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-        loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
+        // On web, prefer getCurrentPosition directly (getLastKnownPosition unsupported)
+        if (kIsWeb) {
+          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+          loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
+        } else {
+          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+          loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
+        }
       }
 
-      final result = await ApiService.predictByLocation(loc['latitude']!, loc['longitude']!);
+      if (loc == null) {
+        throw Exception('Could not determine location. Please ensure location services are enabled.');
+      }
+
+      // Try to obtain a friendly region name (best-effort, non-blocking)
+      String? regionName;
+      try {
+        regionName = await ApiService.reverseGeocode(loc['latitude']!, loc['longitude']!);
+      } catch (_) {
+        regionName = null;
+      }
+
+      final result = await ApiService.predictByLocation(loc['latitude']!, loc['longitude']!, region: regionName);
 
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -61,7 +85,14 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Analysis failed: $e')));
+        // Show improved error messages
+        String message = 'Analysis failed: ${e.toString()}';
+        if (e.toString().contains('Missing field')) {
+          message = 'Analysis failed: Server rejected request (missing data). Server response: ${e.toString()}';
+        } else if (e.toString().contains('Failed to call backend') || e.toString().contains('API error')) {
+          message = 'Analysis failed: Could not contact backend or backend returned an error. Details: ${e.toString()}';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     }
   }
@@ -84,14 +115,28 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
       }
 
       // Try last known position first or use test hook
-      Map<String, double> loc;
+      Map<String, double>? loc;
       if (widget.getLocation != null) {
         loc = await widget.getLocation!();
       } else {
-        Position? pos = await Geolocator.getLastKnownPosition();
-        pos ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
-        loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
+        // On web, getLastKnownPosition is not supported; use getCurrentPosition with low accuracy
+        if (kIsWeb) {
+          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
+          loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
+        } else {
+          try {
+            Position? pos = await Geolocator.getLastKnownPosition();
+            pos ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
+            loc = {'latitude': pos!.latitude, 'longitude': pos.longitude};
+          } catch (e) {
+            // Fallback to current position if lastKnown is unsupported
+            final pos2 = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
+            loc = {'latitude': pos2.latitude, 'longitude': pos2.longitude};
+          }
+        }
       }
+
+      if (loc == null) throw Exception('Could not determine location for approximate assessment.');
 
       final result = await ApiService.predictByLocation(loc['latitude']!, loc['longitude']!);
 
@@ -102,7 +147,70 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Analysis failed: $e')));
+        String message = 'Analysis failed: $e';
+        if (e.toString().contains('UNSUPPORTED_OPERATION') || e.toString().contains('getLastKnownPosition')) {
+          message = 'Analysis failed: Last known position is not available on this platform. Using current location failed as well.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+    }
+  }
+
+  Future<void> _handleManualLocation() async {
+    setState(() => _isLoading = true);
+    try {
+      double? lat, lon;
+
+      if (_manualEntryMode == 'coordinates') {
+        // Parse latitude and longitude from text fields
+        if (_latController.text.isEmpty || _lonController.text.isEmpty) {
+          throw Exception('Please enter both latitude and longitude');
+        }
+        lat = double.tryParse(_latController.text);
+        lon = double.tryParse(_lonController.text);
+        if (lat == null || lon == null) {
+          throw Exception('Latitude and longitude must be valid numbers');
+        }
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+          throw Exception('Latitude must be -90 to 90, longitude must be -180 to 180');
+        }
+      } else {
+        // Parse place name (for now, we'll just use it as a label; in future, integrate geocoding)
+        if (_placeNameController.text.isEmpty) {
+          throw Exception('Please enter a place name or coordinates');
+        }
+        // TODO: In future, integrate with a geocoding service to convert place name to coordinates
+        throw Exception('Place name search not yet available. Please use coordinates (latitude, longitude).');
+      }
+
+      if (lat == null || lon == null) {
+        throw Exception('Could not parse location');
+      }
+
+      // Try to obtain a friendly region name (best-effort, non-blocking)
+      String? regionName;
+      try {
+        regionName = await ApiService.reverseGeocode(lat, lon);
+      } catch (_) {
+        regionName = null;
+      }
+
+      final result = await ApiService.predictByLocation(lat, lon, region: regionName);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ResultsScreen(result: result)));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        String message = 'Analysis failed: ${e.toString()}';
+        if (e.toString().contains('Missing field')) {
+          message = 'Analysis failed: Server rejected request (missing data). Details: ${e.toString()}';
+        } else if (e.toString().contains('API error') || e.toString().contains('Failed to call backend')) {
+          message = 'Analysis failed: Backend error. Details: ${e.toString()}';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     }
   }
@@ -161,7 +269,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 14.0),
                     ),
-                    child: const Text('Allow Location & Analyze', style: TextStyle(fontSize: 16)),
+                    child: const Text('Allow Location & Start Analysis', style: TextStyle(fontSize: 16)),
                   ),
 
             const SizedBox(height: 12),
@@ -176,10 +284,86 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
             ),
 
             const SizedBox(height: 16),
+
+            // Manual location entry expander (for checking other areas)
+            Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    InkWell(
+                      onTap: () => setState(() => _showManualEntry = !_showManualEntry),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Check other areas',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            Icon(_showManualEntry ? Icons.expand_less : Icons.expand_more),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_showManualEntry) ...[
+                      const SizedBox(height: 12),
+                      Text('Enter coordinates for any location to check flood risk:', style: Theme.of(context).textTheme.bodySmall),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _latController,
+                        keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Latitude (-90 to 90)',
+                          hintText: '22.5726',
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _lonController,
+                        keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Longitude (-180 to 180)',
+                          hintText: '88.3639',
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _handleManualLocation,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1976D2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(vertical: 12.0),
+                        ),
+                        child: _isLoading ? const CircularProgressIndicator() : const Text('Analyze this location'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
             Center(child: Text('You will be asked to grant location permission. This app provides guidance only.', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center)),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _latController.dispose();
+    _lonController.dispose();
+    _placeNameController.dispose();
+    super.dispose();
   }
 }

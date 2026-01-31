@@ -43,7 +43,7 @@ class ApiService {
       return predictByLocationFn!(latitude, longitude, region: region);
     }
 
-    final uri = Uri.parse('$baseUrl/api/v1/predict-location');
+    final uri = Uri.parse('$baseUrl/api/v1/predict');
     final body = <String, dynamic>{'latitude': latitude, 'longitude': longitude};
     if (region != null) body['region'] = region;
 
@@ -55,6 +55,25 @@ class ApiService {
         final json = jsonDecode(res.body);
         return PredictionResult.fromJson(json);
       } else {
+        // Backwards compatibility: some older servers expose /api/v1/predict-location instead
+        if (res.statusCode == 400 && res.body.contains('Missing field')) {
+          // try legacy endpoint
+          final legacyUri = Uri.parse('$baseUrl/api/v1/predict-location');
+          try {
+            final legacyRes = await http
+                .post(legacyUri, body: jsonEncode(body), headers: {'Content-Type': 'application/json'})
+                .timeout(const Duration(seconds: 12));
+            if (legacyRes.statusCode == 200) {
+              final json = jsonDecode(legacyRes.body);
+              return PredictionResult.fromJson(json);
+            } else {
+              throw Exception('API error: ${legacyRes.statusCode} ${legacyRes.body}');
+            }
+          } catch (e) {
+            throw Exception('API error (fallback failed): ${e}');
+          }
+        }
+
         throw Exception('API error: ${res.statusCode} ${res.body}');
       }
     } catch (e) {
