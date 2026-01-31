@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'input_form_screen.dart';
 import 'info_screen.dart';
+import 'start_assessment_screen.dart';
+import 'results_screen.dart';
 import '../services/api_service.dart';
 
+
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  // Optional test hook to override how location is fetched in widget tests.
+  // Should return a map with 'latitude' and 'longitude' doubles.
+  final Future<Map<String, double>> Function()? getLocation;
+
+  const HomeScreen({Key? key, this.getLocation}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -50,12 +57,17 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
+            // Primary CTA — navigates to a dedicated Start Assessment screen
             ElevatedButton.icon(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InputFormScreen())),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StartAssessmentScreen())),
               icon: const Icon(Icons.play_arrow_rounded),
               label: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 14.0),
                 child: Text('Start Assessment', style: TextStyle(fontSize: 16)),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32), // Forest green
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
 

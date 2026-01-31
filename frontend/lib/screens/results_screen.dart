@@ -87,51 +87,23 @@ class ResultsScreen extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // Risk banner
+          // Risk banner (dominant)
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), color: color.withOpacity(0.08)),
-              child: Row(children: [
-                Container(
-                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                  padding: const EdgeInsets.all(10),
-                  child: Icon(icon, color: Colors.white, size: 26),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(result.risk.toUpperCase(), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
-                    const SizedBox(height: 6),
-                    if (result.region != null) Text('Region: ${result.region}', style: Theme.of(context).textTheme.bodySmall),
-                    if (result.location != null) Text('Location: ${result.location!['latitude']}, ${result.location!['longitude']}', style: Theme.of(context).textTheme.bodySmall),
-                  ]),
-                ),
-                if (result.confidence != null) Text('${(result.confidence! * 100).toStringAsFixed(0)}%', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.black54)),
-              ]),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Explanation + Confidence
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            color: color.withOpacity(0.08),
             child: Padding(
-              padding: const EdgeInsets.all(14.0),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Row(children: [
-                  Icon(Icons.shield_outlined, color: Theme.of(context).colorScheme.secondary),
-                  const SizedBox(width: 8),
-                  const Text('Explanation', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Container(decoration: BoxDecoration(color: color, shape: BoxShape.circle), padding: const EdgeInsets.all(12), child: Icon(icon, color: Colors.white, size: 28)),
+                  const SizedBox(width: 14),
+                  Expanded(child: Text(result.risk.toUpperCase(), style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: color))),
+                  if (result.confidence != null) Text('${(result.confidence! * 100).toStringAsFixed(0)}%', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.black54)),
                 ]),
-                const SizedBox(height: 10),
-                Text(result.explanation, style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(height: 12),
-                Text(result.confidence != null ? 'Confidence: ${(result.confidence! * 100).toStringAsFixed(1)}%' : 'Confidence: N/A', style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 8),
+                if (result.region != null || result.location != null)
+                  Text('${result.region ?? ''}${result.region != null && result.location != null ? ' • ' : ''}${result.location != null ? '${result.location!['latitude'].toStringAsFixed(3)}, ${result.location!['longitude'].toStringAsFixed(3)}' : ''}', style: Theme.of(context).textTheme.bodySmall),
               ]),
             ),
           ),
@@ -144,17 +116,17 @@ class ResultsScreen extends StatelessWidget {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
               padding: const EdgeInsets.all(14.0),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(child: Text(result.recommendation!, style: Theme.of(context).textTheme.bodyMedium)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [Icon(Icons.warning_amber_rounded, color: color), const SizedBox(width: 8), const Text('Safety recommendation', style: TextStyle(fontWeight: FontWeight.bold))]),
+                const SizedBox(height: 8),
+                Text(result.recommendation!, style: Theme.of(context).textTheme.bodyMedium),
               ]),
             ),
           ),
 
           const SizedBox(height: 12),
 
-          // Influencing factors
+          // Influencing factors (short list)
           if (result.influencingFactors != null && result.influencingFactors!.isNotEmpty) Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -163,7 +135,7 @@ class ResultsScreen extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('Influencing factors', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Wrap(spacing: 8, runSpacing: 6, children: result.influencingFactors!.map((f) => Chip(label: Text(f), backgroundColor: Theme.of(context).colorScheme.surface)).toList()),
+                ...result.influencingFactors!.map((f) => Padding(padding: const EdgeInsets.symmetric(vertical:4.0), child: Text('• $f'))).toList(),
               ]),
             ),
           ),
@@ -242,7 +214,7 @@ class ResultsScreen extends StatelessWidget {
           ]),
 
           const SizedBox(height: 18),
-          Text(result.disclaimer ?? 'Disclaimer: This tool provides guidance only. Always confirm with a site inspection for safety-critical decisions.', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+          Text(result.disclaimer ?? 'Predictions are indicative and based on regional data', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
         ]),
       ),
     );

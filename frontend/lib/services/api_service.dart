@@ -34,7 +34,15 @@ class ApiService {
   }
 
   // New: predict using only latitude and longitude. Optionally include a human-readable region if available.
+  // Test hook: allow tests to inject a fake implementation
+  static Future<PredictionResult> Function(double latitude, double longitude, {String? region})? predictByLocationFn;
+
   static Future<PredictionResult> predictByLocation(double latitude, double longitude, {String? region}) async {
+    // If a test override exists, call it (useful for widget tests)
+    if (predictByLocationFn != null) {
+      return predictByLocationFn!(latitude, longitude, region: region);
+    }
+
     final uri = Uri.parse('$baseUrl/api/v1/predict-location');
     final body = <String, dynamic>{'latitude': latitude, 'longitude': longitude};
     if (region != null) body['region'] = region;
