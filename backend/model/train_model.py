@@ -8,12 +8,50 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
+
+
+def _aggregate_importances_from_pipe(pipe, clf_name='clf'):
+    """Aggregate feature importances back to original input features for readability."""
+    try:
+        pre = pipe.named_steps['pre']
+    except Exception:
+        return {}
+    try:
+        feat_names = pre.get_feature_names_out()
+    except Exception:
+        # fallback simple naming
+        feat_names = []
+    try:
+        clf = pipe.named_steps[clf_name]
+        imps = clf.feature_importances_
+    except Exception:
+        return {}
+    agg = {}
+    for name, imp in zip(feat_names, imps):
+        if 'soil_type' in name:
+            key = 'soil_type'
+        elif 'elevation_category' in name:
+            key = 'elevation_category'
+        elif 'flood_frequency' in name or name.startswith('flood_frequency'):
+            key = 'flood_frequency'
+        elif 'rainfall_intensity' in name or name.startswith('rainfall_intensity'):
+            key = 'rainfall_intensity'
+        elif 'distance_from_river' in name or name.startswith('distance_from_river'):
+            key = 'distance_from_river'
+        else:
+            key = name
+        agg[key] = agg.get(key, 0.0) + float(imp)
+    total = sum(agg.values()) or 1.0
+    for k in list(agg.keys()):
+        agg[k] = float(agg[k] / total)
+    return agg
 
 
 def make_synthetic_dataset(path=None, n=1000, random_state=42):
@@ -77,19 +115,43 @@ def train_and_save(output_path: str, data_path: str = None):
         ("num", StandardScaler(), num_cols),
     ])
 
-    pipe = Pipeline([
+    rf_pipe = Pipeline([
         ("pre", pre),
         ("clf", RandomForestClassifier(n_estimators=150, random_state=42))
     ])
 
+    dt_pipe = Pipeline([
+        ("pre", pre),
+        ("clf", DecisionTreeClassifier(max_depth=6, random_state=42))
+    ])
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    pipe.fit(X_train, y_train)
-    preds = pipe.predict(X_test)
-    print(classification_report(y_test, preds))
+    rf_pipe.fit(X_train, y_train)
+    dt_pipe.fit(X_train, y_train)
+
+    rf_preds = rf_pipe.predict(X_test)
+    dt_preds = dt_pipe.predict(X_test)
+
+    print("RandomForest performance:\n", classification_report(y_test, rf_preds))
+    print("DecisionTree performance:\n", classification_report(y_test, dt_preds))
+
+    # compute aggregated importances for readability
+    rf_imps = _aggregate_importances_from_pipe(rf_pipe, clf_name='clf')
+    dt_imps = _aggregate_importances_from_pipe(dt_pipe, clf_name='clf')
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    joblib.dump(pipe, output_path)
-    print(f"Saved model to {output_path}")
+    # Save both pipelines plus metadata
+    artifact = {
+        'rf': rf_pipe,
+        'dt': dt_pipe,
+        'feature_importances': {
+            'random_forest': rf_imps,
+            'decision_tree': dt_imps
+        }
+    }
+
+    joblib.dump(artifact, output_path)
+    print(f"Saved model artifact (RF + DT) to {output_path}")
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ class ApiService {
   }
 
   static Future<PredictionResult> predict(InputData data) async {
-    final uri = Uri.parse('$baseUrl/predict');
+    final uri = Uri.parse('$baseUrl/api/v1/predict');
     try {
       final res = await http
           .post(uri, body: jsonEncode(data.toJson()), headers: {'Content-Type': 'application/json'})

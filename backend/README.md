@@ -31,7 +31,7 @@ flask run --host=0.0.0.0 --port=5000
 API
 
 - GET /health -> {"status":"ok"}
-- POST /predict -> Accepts JSON with fields:
+- POST /api/v1/predict -> Accepts JSON with fields:
   - soil_type ("clay"|"silt"|"sand"|"loam")
   - flood_frequency (int)
   - rainfall_intensity (float)
@@ -41,7 +41,19 @@ API
   - longitude (float, optional) # optional: user/device location
   - region (string, optional)   # optional: region name provided by user or auto-detected
 
-Returns JSON: {"risk":"High|Medium|Low","probabilities":{...},"explanation":"...", "region":..., "location":{...}}
+Returns structured JSON:
+{
+  "risk_level": "High|Medium|Low",
+  "confidence": 0.87,
+  "probabilities": {"High":0.87, "Medium":0.10, "Low":0.03},
+  "explanation": "Human-readable reasoning",
+  "recommendation": "Safety advice based on risk",
+  "feature_importances": [{"feature":"flood_frequency","importance":0.45}, ...],
+  "influencing_factors": ["Frequent flooding (3) increases ...", ...],
+  "model_comparison": {"decision_tree": {"prediction":"High","confidence":0.7}, "agree": true}
+}
+
+(An unversioned `/predict` endpoint also exists for backward compatibility and forwards to `/api/v1/predict`.)
 
 Notes
 

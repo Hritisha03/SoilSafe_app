@@ -9,11 +9,11 @@ class ResultsScreen extends StatelessWidget {
   Color _colorForRisk(String r) {
     switch (r.toLowerCase()) {
       case 'high':
-        return Colors.red.shade600;
+        return const Color(0xFFC62828); // Soft Red
       case 'medium':
-        return Colors.orange.shade600;
+        return const Color(0xFFF9A825); // Amber
       default:
-        return Colors.green.shade700;
+        return const Color(0xFF2E7D32); // Deep Forest Green
     }
   }
 
@@ -87,31 +87,110 @@ class ResultsScreen extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Risk banner
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18.0),
-              child: Column(children: [
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  CircleAvatar(radius: 28, backgroundColor: color, child: Icon(icon, color: Colors.white, size: 32)),
-                ]),
-                const SizedBox(height: 12),
-                Text(result.risk, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: color)),
-                const SizedBox(height: 8),
-                if (result.region != null) Text('Region: ${result.region}', style: const TextStyle(color: Colors.black54)),
-                if (result.location != null) Text('Location: ${result.location!['latitude']}, ${result.location!['longitude']}', style: const TextStyle(color: Colors.black54)),
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), color: color.withOpacity(0.08)),
+              child: Row(children: [
+                Container(
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(icon, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(result.risk.toUpperCase(), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+                    const SizedBox(height: 6),
+                    if (result.region != null) Text('Region: ${result.region}', style: Theme.of(context).textTheme.bodySmall),
+                    if (result.location != null) Text('Location: ${result.location!['latitude']}, ${result.location!['longitude']}', style: Theme.of(context).textTheme.bodySmall),
+                  ]),
+                ),
+                if (result.confidence != null) Text('${(result.confidence! * 100).toStringAsFixed(0)}%', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.black54)),
               ]),
             ),
           ),
 
           const SizedBox(height: 16),
 
+          // Explanation + Confidence
           Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
               padding: const EdgeInsets.all(14.0),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Explanation', style: TextStyle(fontWeight: FontWeight.bold)),
+                Row(children: [
+                  Icon(Icons.shield_outlined, color: Theme.of(context).colorScheme.secondary),
+                  const SizedBox(width: 8),
+                  const Text('Explanation', style: TextStyle(fontWeight: FontWeight.bold)),
+                ]),
+                const SizedBox(height: 10),
+                Text(result.explanation, style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 12),
+                Text(result.confidence != null ? 'Confidence: ${(result.confidence! * 100).toStringAsFixed(1)}%' : 'Confidence: N/A', style: Theme.of(context).textTheme.bodySmall),
+              ]),
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Recommendation
+          if (result.recommendation != null) Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(14.0),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(child: Text(result.recommendation!, style: Theme.of(context).textTheme.bodyMedium)),
+              ]),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Influencing factors
+          if (result.influencingFactors != null && result.influencingFactors!.isNotEmpty) Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Influencing factors', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text(result.explanation),
+                Wrap(spacing: 8, runSpacing: 6, children: result.influencingFactors!.map((f) => Chip(label: Text(f), backgroundColor: Theme.of(context).colorScheme.surface)).toList()),
+              ]),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Feature importances
+          if (result.featureImportances != null && result.featureImportances!.isNotEmpty) Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Feature importances', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                ...result.featureImportances!.map((fi) {
+                  final feature = fi['feature'] ?? fi['name'] ?? fi.toString();
+                  final imp = (fi['importance'] != null) ? (fi['importance'] as num).toDouble() : 0.0;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical:6.0),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(feature), Text('${(imp*100).toStringAsFixed(1)}%')]),
+                      const SizedBox(height: 6),
+                      ClipRRect(borderRadius: BorderRadius.circular(6), child: LinearProgressIndicator(value: imp, minHeight: 8, color: Theme.of(context).colorScheme.primary, backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.18))),
+                    ]),
+                  );
+                }).toList(),
               ]),
             ),
           ),
@@ -144,7 +223,10 @@ class ResultsScreen extends StatelessWidget {
                 label: const Text('Run another'),
               ),
             )
-          ])
+          ]),
+
+          const SizedBox(height: 18),
+          Text('Disclaimer: This tool provides guidance only. Always confirm with a site inspection for safety-critical decisions.', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
         ]),
       ),
     );
