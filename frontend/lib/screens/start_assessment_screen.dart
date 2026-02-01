@@ -5,7 +5,7 @@ import '../services/api_service.dart';
 import 'results_screen.dart';
 
 class StartAssessmentScreen extends StatefulWidget {
-  // Optional test hook to bypass Geolocator in widget tests. Returns {'latitude':.., 'longitude':..}
+ 
   final Future<Map<String, double>> Function()? getLocation;
 
   const StartAssessmentScreen({Key? key, this.getLocation}) : super(key: key);
@@ -243,7 +243,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
                     Text('Start Soil Safety Assessment', style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
                     const SizedBox(height: 8),
                     Text(
-                      'We use your location to assess post-flood soil safety in your area',
+                      'We use your location to assess soil safety in your area',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),

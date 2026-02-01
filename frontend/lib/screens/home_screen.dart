@@ -7,8 +7,6 @@ import '../services/api_service.dart';
 
 
 class HomeScreen extends StatelessWidget {
-  // Optional test hook to override how location is fetched in widget tests.
-  // Should return a map with 'latitude' and 'longitude' doubles.
   final Future<Map<String, double>> Function()? getLocation;
 
   const HomeScreen({Key? key, this.getLocation}) : super(key: key);
@@ -44,7 +42,7 @@ class HomeScreen extends StatelessWidget {
                     const SizedBox(height: 14),
                     Text('SoilSafe', style: Theme.of(context).textTheme.headlineMedium),
                     const SizedBox(height: 6),
-                    Text('Post-Flood Soil Safety Checker', style: Theme.of(context).textTheme.titleMedium),
+                    Text('Soil Safety Checker', style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 10),
                     Text(
                       'A rapid, interpretable post-flood triage tool. Use this to prioritize inspections — not a substitute for on-site geotechnical assessment.',
