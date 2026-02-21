@@ -1,8 +1,3 @@
-"""Train a simple classifier for SoilSafe and save as a Pickle file.
-
-This script creates a synthetic dataset if none provided and trains a pipeline
-(OneHotEncoder for categoricals + RandomForestClassifier).
-"""
 import argparse
 import os
 import numpy as np
@@ -28,7 +23,7 @@ def _aggregate_importances_from_pipe(pipe, clf_name='clf'):
     try:
         feat_names = pre.get_feature_names_out()
     except Exception:
-        # fallback simple naming
+       
         feat_names = []
     try:
         clf = pipe.named_steps[clf_name]
@@ -56,67 +51,96 @@ def _aggregate_importances_from_pipe(pipe, clf_name='clf'):
     return agg
 
 
-def make_synthetic_dataset(path=None, n=1000, random_state=42):
+def make_realistic_dataset(n=3000, random_state=42):
+    import numpy as np
+    import pandas as pd
+
     rng = np.random.RandomState(random_state)
+
     soil_types = ["clay", "silt", "sand", "loam"]
     elevation = ["low", "mid", "high"]
-    rows = []
+
+    data = []
+
     for _ in range(n):
-        st = rng.choice(soil_types)
-        ff = rng.poisson(2)
-        ri = max(0, rng.normal(80, 30))
-        ec = rng.choice(elevation, p=[0.4, 0.35, 0.25])
-        dfr = round(abs(rng.normal(2.0, 2.5)), 2)
+        soil = rng.choice(soil_types, p=[0.3, 0.3, 0.2, 0.2])
+        elev = rng.choice(elevation, p=[0.4, 0.35, 0.25])
 
-        # simple heuristic to set risk label (for demo purposes)
+        # rainfall (mm)
+        rainfall = max(0, rng.normal(80, 40))
+
+        # flood frequency influenced by rainfall + elevation
+        flood = int(max(0, rng.poisson(1.5 + (rainfall / 100))))
+
+        # distance from river (km)
+        distance = abs(rng.normal(2, 2))
+
+        # -------------------------
+        # Risk scoring logic
+        # -------------------------
         score = 0
-        if st in ("clay", "silt"): score += 1
-        score += int(ff >= 3)
-        score += int(ri >= 100)
-        score += (0 if ec == "high" else 1)
-        score += int(dfr < 1.0)
 
-        if score >= 4:
+        # Soil impact
+        if soil == "clay":
+            score += 2
+        elif soil == "silt":
+            score += 1
+
+        # Rainfall
+        if rainfall > 120:
+            score += 2
+        elif rainfall > 80:
+            score += 1
+
+        # Flood frequency
+        if flood >= 4:
+            score += 2
+        elif flood >= 2:
+            score += 1
+
+        # Elevation
+        if elev == "low":
+            score += 2
+        elif elev == "mid":
+            score += 1
+
+        # Distance from river
+        if distance < 1:
+            score += 2
+        elif distance < 3:
+            score += 1
+
+        # Noise (VERY IMPORTANT)
+        score += rng.choice([0, 1], p=[0.7, 0.3])
+
+        # Label
+        if score >= 6:
             label = "High"
-        elif score >= 2:
+        elif score >= 3:
             label = "Medium"
         else:
             label = "Low"
 
-        # infer categorical rainfall bucket for synthetic record
-        if ri < 20:
-            rc = 'Light'
-        elif ri <= 100:
-            rc = 'Moderate'
-        else:
-            rc = 'Heavy'
-
-        rows.append({
-            "soil_type": st,
-            "flood_frequency": ff,
-            "rainfall_intensity": ri,
-            "elevation_category": ec,
-            "distance_from_river": dfr,
-            "rainfall_category": rc,
-            "risk_label": label,
+        data.append({
+            "soil_type": soil,
+            "flood_frequency": flood,
+            "rainfall_intensity": round(rainfall, 2),
+            "elevation_category": elev,
+            "distance_from_river": round(distance, 2),
+            "risk_label": label
         })
 
-    df = pd.DataFrame(rows)
-    if path:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        df.to_csv(path, index=False)
-    return df
+    return pd.DataFrame(data)
 
 
 def train_and_save(output_path: str, data_path: str = None):
     if data_path and os.path.exists(data_path):
         df = pd.read_csv(data_path)
-        # Accept both 'label' and 'risk_label' as target column
         if 'label' in df.columns and 'risk_label' not in df.columns:
             df = df.rename(columns={'label': 'risk_label'})
     else:
-        print("No dataset found or path not provided. Generating synthetic dataset...")
-        df = make_synthetic_dataset(n=2000)
+        print("No dataset found or path not provided. Generating realistic dataset...")
+        df = make_realistic_dataset(n=3000)
 
     if 'risk_label' not in df.columns:
         raise ValueError('Dataset must include a target column named "risk_label" or "label"')
@@ -132,21 +156,32 @@ def train_and_save(output_path: str, data_path: str = None):
         ("num", StandardScaler(), num_cols),
     ])
 
-    # show class distribution
+  
     class_counts = y.value_counts().to_dict()
     print(f"Class distribution: {class_counts}")
 
     rf_pipe = Pipeline([
         ("pre", pre),
-        ("clf", RandomForestClassifier(n_estimators=200, random_state=42, class_weight='balanced'))
+        ("clf", RandomForestClassifier(
+            n_estimators=300,
+            max_depth=8,
+            random_state=42,
+            class_weight='balanced',
+            min_samples_leaf=5,
+            min_samples_split=10,
+        ))
     ])
 
     dt_pipe = Pipeline([
         ("pre", pre),
-        ("clf", DecisionTreeClassifier(max_depth=6, random_state=42, class_weight='balanced'))
+        ("clf", DecisionTreeClassifier(
+            max_depth=6,
+            random_state=42,
+            class_weight='balanced',
+            min_samples_leaf=5,
+        ))
     ])
 
-    # Cross-validation to estimate generalization
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     print("Running cross-validation (StratifiedKFold=5)...")
     rf_cv_scores = cross_val_score(rf_pipe, X, y, cv=skf, scoring='balanced_accuracy')
@@ -154,7 +189,7 @@ def train_and_save(output_path: str, data_path: str = None):
     print(f"RF CV balanced_accuracy: mean={rf_cv_scores.mean():.4f}, std={rf_cv_scores.std():.4f}")
     print(f"DT CV balanced_accuracy: mean={dt_cv_scores.mean():.4f}, std={dt_cv_scores.std():.4f}")
 
-    # Cross-validated predictions for aggregated report
+  
     rf_cv_preds = cross_val_predict(rf_pipe, X, y, cv=skf)
     dt_cv_preds = cross_val_predict(dt_pipe, X, y, cv=skf)
 
@@ -162,7 +197,7 @@ def train_and_save(output_path: str, data_path: str = None):
     print("Cross-validated DecisionTree report:\n", classification_report(y, dt_cv_preds))
     print("RandomForest confusion matrix:\n", confusion_matrix(y, rf_cv_preds))
 
-    # final train/test split and fit final models
+   
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     rf_pipe.fit(X_train, y_train)
     dt_pipe.fit(X_train, y_train)
@@ -176,12 +211,12 @@ def train_and_save(output_path: str, data_path: str = None):
     print("RandomForest performance on hold-out test:\n", test_report_rf)
     print("DecisionTree performance on hold-out test:\n", test_report_dt)
 
-    # compute aggregated importances for readability
+    
     rf_imps = _aggregate_importances_from_pipe(rf_pipe, clf_name='clf')
     dt_imps = _aggregate_importances_from_pipe(dt_pipe, clf_name='clf')
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    # Save both pipelines plus metadata
+    
     artifact = {
         'rf': rf_pipe,
         'dt': dt_pipe,

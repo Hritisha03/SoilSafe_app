@@ -5,14 +5,13 @@ import '../models/prediction_result.dart';
 import '../models/input_data.dart';
 
 class ApiService {
-  // Support overriding at build/run time with --dart-define=API_BASE=http://host:5000
-  // Use a static const so `String.fromEnvironment` is only invoked in a const context
+
   static const String _definedApiBase = String.fromEnvironment('API_BASE', defaultValue: '');
 
   static String get baseUrl {
     if (_definedApiBase.isNotEmpty) return _definedApiBase;
-    if (kIsWeb) return 'http://127.0.0.1:5000'; // web should use localhost
-    return 'http://10.0.2.2:5000'; // Android emulator default
+    if (kIsWeb) return 'http://127.0.0.1:5000'; 
+    return 'http://10.0.2.2:5000'; 
   }
 
   static Future<PredictionResult> predict(InputData data) async {
@@ -33,8 +32,6 @@ class ApiService {
     }
   }
 
-  // New: predict using only latitude and longitude. Optionally include a human-readable region if available.
-  // Test hook: allow tests to inject a fake implementation
   static Future<PredictionResult> Function(double latitude, double longitude, {String? region})? predictByLocationFn;
 
   static Future<PredictionResult> predictByLocation(double latitude, double longitude, {String? region}) async {
@@ -55,9 +52,8 @@ class ApiService {
         final json = jsonDecode(res.body);
         return PredictionResult.fromJson(json);
       } else {
-        // Backwards compatibility: some older servers expose /api/v1/predict-location instead
+
         if (res.statusCode == 400 && res.body.contains('Missing field')) {
-          // try legacy endpoint
           final legacyUri = Uri.parse('$baseUrl/api/v1/predict-location');
           try {
             final legacyRes = await http
@@ -96,7 +92,7 @@ class ApiService {
     }
   }
 
-  // Simple reverse-geocoding using OpenStreetMap Nominatim. Returns a short region / display name or null.
+
   static Future<String?> reverseGeocode(double latitude, double longitude) async {
     try {
       final url = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$latitude&lon=$longitude');
@@ -105,13 +101,13 @@ class ApiService {
         final json = jsonDecode(res.body);
         if (json is Map && json.containsKey('address')) {
           final addr = json['address'];
-          // Prefer county/state/town when available
+
           return addr['county'] ?? addr['state'] ?? addr['village'] ?? addr['town'] ?? json['display_name'];
         }
         return json['display_name'] ?? null;
       }
     } catch (e) {
-      // ignore errors and return null
+
     }
     return null;
   }

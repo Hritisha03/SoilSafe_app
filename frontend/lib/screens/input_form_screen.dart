@@ -12,7 +12,7 @@ class InputFormScreen extends StatefulWidget {
 }
 
 class _InputFormScreenState extends State<InputFormScreen> {
-  // We now accept only location (GPS) from the user. All other features are inferred server-side.
+
   double? _latitude;
   double? _longitude;
   String? _region;
@@ -25,7 +25,6 @@ class _InputFormScreenState extends State<InputFormScreen> {
 
 
   bool _isInIndia(double lat, double lon) {
-    // India bounding box (approximate)
     return lat >= 6.5 && lat <= 35.5 && lon >= 68.0 && lon <= 97.5;
   }
 
@@ -34,7 +33,7 @@ class _InputFormScreenState extends State<InputFormScreen> {
     final lon = pos.longitude;
 
     if (!_isInIndia(lat, lon)) {
-      // Enforce India-only: stop tracking and inform user
+
       await _positionStreamSub?.cancel();
       _positionStreamSub = null;
       setState(() {
@@ -52,25 +51,25 @@ class _InputFormScreenState extends State<InputFormScreen> {
       _longitude = lon;
     });
 
-    // Try reverse geocoding and map to flood region
+
     try {
       final name = await ApiService.reverseGeocode(lat, lon);
       final mapped = _mapToFloodRegion(name);
       if (mapped != null) {
         setState(() => _region = mapped);
       } else if (name != null && _region == null) {
-        // If reverse geocode returns a nearby place name, we set region as that name (best-effort)
+
         setState(() => _region = name);
       }
     } catch (e) {
-      // ignore reverse geocode failures
+
     }
   }
 
   String? _mapToFloodRegion(String? geocode) {
     if (geocode == null) return null;
     final g = geocode.toLowerCase();
-    // Keyword-based mapping (best-effort)
+
     if (g.contains('assam') || g.contains('brahmaputra') || g.contains('guwahati') || g.contains('dibrugarh')) return 'Brahmaputra Valley (Assam)';
     if (g.contains('kolkata') || g.contains('west bengal') || g.contains('sunderbans') || g.contains('sundarban')) return 'West Bengal Coast';
     if (g.contains('andhra') || g.contains('godavari') || g.contains('visakhapatnam')) return 'Coastal Andhra & Godavari Basin';
@@ -81,7 +80,7 @@ class _InputFormScreenState extends State<InputFormScreen> {
     if (g.contains('maharashtra') || g.contains('mumbai') || g.contains('konkan')) return 'Konkan & Goa';
     if (g.contains('himachal') || g.contains('uttarakhand') || g.contains('shimla')) return 'Himachal / Uttarakhand (Hill floods)';
     if (g.contains('north') && g.contains('east')) return 'North-East Hill Flood Zones';
-    // fallback: central/other
+
     if (g.contains('central') || g.contains('madhya') || g.contains('chhattisgarh')) return 'Central India Flood Plains';
     return null;
   }
@@ -167,7 +166,7 @@ class _InputFormScreenState extends State<InputFormScreen> {
 
                             setState(() => _loading = true);
                             try {
-                              // Optionally pass the detected region name to the backend if available
+
                               final res = await ApiService.predictByLocation(_latitude!, _longitude!, region: _region);
                               if (!mounted) return;
                               Navigator.push(context, MaterialPageRoute(builder: (_) => ResultsScreen(result: res)));

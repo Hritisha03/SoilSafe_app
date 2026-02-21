@@ -7,7 +7,7 @@ import 'package:soilsafe/screens/results_screen.dart';
 
 void main() {
   testWidgets('Start Assessment → Analyze → Results flow (mocked)', (WidgetTester tester) async {
-    // Inject a fake API responder
+
     ApiService.predictByLocationFn = (double lat, double lon, {String? region}) async {
       return PredictionResult(
         risk: 'High',
@@ -24,27 +24,25 @@ void main() {
       );
     };
 
-    // Build the Start Assessment screen with a test location provider
+ 
     await tester.pumpWidget(MaterialApp(home: StartAssessmentScreen(getLocation: () async => {'latitude': 25.6, 'longitude': 85.1})));
 
-    // Verify CTA is present
+
     expect(find.text('Allow Location & Analyze'), findsOneWidget);
 
-    // Tap CTA
+   
     await tester.tap(find.text('Allow Location & Analyze'));
-    await tester.pump(); // start loading
-
-    // Wait for navigation to finish
+    await tester.pump(); 
     await tester.pumpAndSettle();
 
-    // Expect Results screen to contain the mocked data
+  
     expect(find.text('HIGH'), findsOneWidget);
     expect(find.text('Inspect urgently and restrict access'), findsOneWidget);
     expect(find.text('Ganges Plains'), findsOneWidget);
     expect(find.text('soil_type'), findsOneWidget);
     expect(find.text('clayey'), findsOneWidget);
 
-    // Cleanup override
+   
     ApiService.predictByLocationFn = null;
   });
 }

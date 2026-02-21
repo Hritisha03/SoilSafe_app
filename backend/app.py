@@ -1,33 +1,195 @@
-"""Flask API for SoilSafe
-
-Endpoints:
-- GET /health
-- POST /api/v1/predict (new versioned endpoint)
-- POST /predict (backward compatible, calls v1)
-
-Return structured JSON risk predictions.
-"""
 from flask import Flask, request, jsonify
 import joblib
 import os
 import traceback
 import requests
 from datetime import datetime, timedelta
+import numpy as np
+import pandas as pd
 
-
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+    shap = None
 try:
     from flask_cors import CORS
 except ImportError:
     def CORS(app):
         pass
 
-# Prefer the default model path near this module if it exists (robust against env var mistakes)
+def _collapse_feature_importances(feature_importances_transformed):
+    """
+    Collapse transformed feature importances (with names like 'cat__soil_type_clay')
+    back to original feature names (like 'soil_type', 'rainfall_intensity', etc.)
+    by summing contributions from each original feature.
+    """
+    # Mapping from common patterns to original feature names
+    feature_mapping = {
+        'soil_type': 'soil_type',
+        'elevation_category': 'elevation_category',
+        'flood_frequency': 'flood_frequency',
+        'rainfall_intensity': 'rainfall_intensity',
+        'distance_from_river': 'distance_from_river',
+        'rainfall': 'rainfall_intensity',  # Common abbreviation
+        'flood': 'flood_frequency',
+        'elevation': 'elevation_category',
+        'distance': 'distance_from_river',
+    }
+    
+    collapsed = {}
+    for feat_name, imp in feature_importances_transformed.items():
+        # Extract original feature name from transformed name
+        # Format: 'cat__feature_name_value' or 'num__feature_name'
+        if '__' in feat_name:
+            parts = feat_name.split('__')
+            original_feat = parts[1]
+            # Remove the value suffix for categorical features (e.g., 'soil_type_clay' -> 'soil_type')
+            if parts[0] == 'cat' and '_' in original_feat:
+                # For categoricals, keep only the feature name (before the last underscore)
+                original_feat = '_'.join(original_feat.split('_')[:-1])
+        else:
+            original_feat = feat_name
+        
+        # Map to canonical name
+        canonical_feat = feature_mapping.get(original_feat, original_feat)
+        
+        # Sum contributions from all one-hot encoded versions of same feature
+        collapsed[canonical_feat] = collapsed.get(canonical_feat, 0.0) + imp
+    
+    # Normalize
+    total = sum(collapsed.values()) or 1.0
+    return {k: v / total for k, v in collapsed.items()}
+
+
+
+def _compute_feature_importance_permutation(clf, X_transformed, feature_names):
+    """
+    Improved permutation-based feature importance that better reflects feature contribution.
+    Permutes each feature and measures change in prediction confidence/uncertainty.
+    Works on already-transformed feature space (X_transformed).
+    """
+    try:
+        base_pred = clf.predict(X_transformed)[0]
+        base_proba = clf.predict_proba(X_transformed)[0]
+        base_confidence = np.max(base_proba)
+        base_entropy = -np.sum(base_proba * np.log(base_proba + 1e-10))  # Add small epsilon to avoid log(0)
+        
+        importances = {}
+        for i, col in enumerate(feature_names):
+            X_perm = X_transformed.copy()
+            # Permute this feature column (shuffle values)
+            if isinstance(X_perm, pd.DataFrame):
+                X_perm.iloc[:, i] = np.random.permutation(X_perm.iloc[:, i].values)
+            else:
+                X_perm[:, i] = np.random.permutation(X_perm[:, i])
+            
+            perm_pred = clf.predict(X_perm)[0]
+            perm_proba = clf.predict_proba(X_perm)[0]
+            perm_confidence = np.max(perm_proba)
+            perm_entropy = -np.sum(perm_proba * np.log(perm_proba + 1e-10))
+            
+            # Importance = how much prediction changes when this feature is shuffled
+            pred_change = 1.0 if perm_pred != base_pred else 0.0
+            conf_change = abs(base_confidence - perm_confidence)
+            entropy_change = abs(base_entropy - perm_entropy)
+            
+            # Weight: prediction change (70%), confidence change (15%), entropy change (15%)
+            importances[col] = float(pred_change * 0.7 + conf_change * 0.15 + entropy_change * 0.15)
+        
+        # Normalize
+        total = sum(importances.values()) or 1.0
+        importances = {k: v / total for k, v in importances.items()}
+        
+        return importances
+    except Exception as e:
+        app.logger.debug(f"Permutation importance failed: {e}")
+        return {}
+
+
+def _local_feature_importance(pipeline, X_raw):
+    """
+    Compute per-prediction feature importance for a scikit-learn pipeline.
+    Handles extracting preprocessor, transforming X, computing importance on transformed space.
+    Returns a simplified dict with original feature names.
+    """
+    try:
+        # Extract pipeline components
+        pre = pipeline.named_steps.get('pre')
+        clf = pipeline.named_steps.get('clf')
+        
+        if pre is None or clf is None:
+            app.logger.debug("Pipeline missing 'pre' or 'clf' step")
+            return {}
+        
+        # Transform the raw input using the preprocessor
+        X_transformed = pre.transform(X_raw)
+        
+        # Get feature names after transformation
+        if hasattr(pre, 'get_feature_names_out'):
+            feature_names_transformed = list(pre.get_feature_names_out())
+        else:
+            # Fallback: use numeric indices as feature names
+            feature_names_transformed = [f"feature_{i}" for i in range(X_transformed.shape[1])]
+        
+        # Try SHAP first (more interpretable for tree models)
+        if SHAP_AVAILABLE and X_transformed.shape[0] == 1:
+            try:
+                explainer = shap.TreeExplainer(clf)
+                shap_values = explainer.shap_values(X_transformed)
+                
+                # For multi-class, shap_values is list of arrays
+                pred = clf.predict(X_transformed)[0]
+                pred_class_idx = list(clf.classes_).index(pred)
+                sv = shap_values[pred_class_idx][0] if isinstance(shap_values, list) else shap_values[0]
+                
+                # Aggregate SHAP values by feature
+                importances = {}
+                for i, name in enumerate(feature_names_transformed):
+                    importances[name] = float(np.abs(sv[i]))
+                
+                # Normalize
+                total = sum(importances.values()) or 1.0
+                importances = {k: v / total for k, v in importances.items()}
+                app.logger.info("Using SHAP-based feature importance")
+                return _collapse_feature_importances(importances)
+            except Exception as e:
+                app.logger.debug(f"SHAP failed ({e}), using permutation importance")
+        
+        # Fallback: improved permutation importance on transformed data
+        perm_imps = _compute_feature_importance_permutation(clf, X_transformed, feature_names_transformed)
+        perm_total = sum(perm_imps.values()) if perm_imps else 0
+        
+        # If permutation importance is meaningful (non-zero sum), use it
+        if perm_imps and perm_total > 1e-6:
+            app.logger.info(f"Using permutation importance")
+            return _collapse_feature_importances(perm_imps)
+        
+        # Last fallback: model's built-in feature importances (if available)
+        # Use this when permutation doesn't yield insights (e.g., supremely confident predictions)
+        try:
+            if hasattr(clf, 'feature_importances_'):
+                importances = {name: float(imp) for name, imp in zip(feature_names_transformed, clf.feature_importances_)}
+                total = sum(importances.values()) or 1.0
+                importances = {k: v / total for k, v in importances.items()}
+                app.logger.info("Using model's built-in feature importances (permutation was near-zero)")
+                return _collapse_feature_importances(importances)
+        except Exception as e:
+            app.logger.debug(f"Built-in importances failed: {e}")
+        
+        return {}
+    
+    except Exception as e:
+        app.logger.error(f"Feature importance computation failed: {e}, traceback: {traceback.format_exc()}")
+        return {}
+
 _default_model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "model/soil_model.pkl"))
 _env_model = os.environ.get("SOIL_MODEL_PATH")
 if os.path.exists(_default_model_path):
     MODEL_PATH = _default_model_path
 elif _env_model:
-    # If env var provided, resolve both absolute and relative candidates
+    
     cand1 = os.path.abspath(_env_model)
     cand2 = os.path.abspath(os.path.join(os.path.dirname(__file__), _env_model))
     if os.path.exists(cand1):
@@ -35,15 +197,16 @@ elif _env_model:
     elif os.path.exists(cand2):
         MODEL_PATH = cand2
     else:
-        # fallback to cand1 (absoluteified env var)
+        
         MODEL_PATH = cand1
 else:
     MODEL_PATH = _default_model_path
 
 app = Flask(__name__)
+# Enable CORS for all routes - critical for Flutter web frontend
 CORS(app)
 
-# Load model at startup (if available), and provide runtime reload if needed
+
 model = None
 if os.path.exists(MODEL_PATH):
     try:
@@ -108,7 +271,7 @@ def _aggregate_importances(pipe, pre, clf):
 def _simple_explanation(input_row, importances):
     """Generate human-readable explanation of top contributing factors."""
     parts = []
-    # Sort by importance
+    
     items = sorted(importances.items(), key=lambda x: x[1], reverse=True)
     top = items[:3]
 
@@ -128,7 +291,7 @@ def _simple_explanation(input_row, importances):
         elif f == 'rainfall_intensity':
             try:
                 v = float(val)
-                # Prefer categorical wording for clarity when available
+                
                 cat = None
                 try:
                     cat = _rainfall_category_from_mm(v)
@@ -168,20 +331,62 @@ def _simple_explanation(input_row, importances):
 def _recommendation_for_risk(risk_level):
     if risk_level.lower() == 'high':
         return (
-            "High risk: Restrict access and seek a professional geotechnical inspection before re-using the land. Avoid heavy machinery and replanting until cleared."
+            "High risk: Early inspection and monitoring is recommended before land reuse or heavy activity. This supports disaster response planning and risk mitigation."
         )
     if risk_level.lower() == 'medium':
         return (
-            "Moderate risk: Schedule an inspection, reduce heavy loads, and monitor for settlement or waterlogging. Take precautions before replanting."
+            "Moderate risk: Periodic monitoring is advised. While no immediate intervention is required, localized assessment may be needed if environmental conditions change."
         )
     return (
-        "Low risk: Routine checks recommended. Continue with caution and schedule a follow-up inspection if conditions change."
+        "Low risk: No immediate action is required under current conditions. Routine observation and standard land use practices are considered sufficient."
     )
 
 
-# ---------------------------------------------------------------------------
-# Location -> feature inference (prototype / rule-based)
-# ---------------------------------------------------------------------------
+def _compute_region_adjusted_importances(base_importances, row, region_rule, lat, lon):
+    """Compute region-specific feature importances based on how inferred features
+    deviate from regional norms and influence risk."""
+    adj = dict(base_importances)
+    if not region_rule:
+        return adj
+    try:
+        rainfall = float(row.get('rainfall_intensity', 0.0))
+        rain_norm = float(region_rule.get('rainfall_intensity', 50.0))
+        flood = float(row.get('flood_frequency', 1.0))
+        flood_norm = float(region_rule.get('flood_frequency', 1.0))
+        dist = float(row.get('distance_from_river', 2.0))
+        dist_norm = float(region_rule.get('distance_from_river', 2.0))
+        elev_cat = row.get('elevation_category', 'mid')
+        elev_norm = region_rule.get('elevation_category', 'mid')
+        soil = row.get('soil_type', 'silt')
+        soil_norm = region_rule.get('soil_type', 'silt')
+        rainfall_ratio = rainfall / max(rain_norm, 1.0)
+        flood_ratio = flood / max(flood_norm, 1.0)
+        dist_ratio = dist / max(dist_norm, 0.1)
+        if rainfall_ratio > 1.5 or rainfall_ratio < 0.5:
+            adj['rainfall_intensity'] = min(adj.get('rainfall_intensity', 0.2) * 1.4, 0.4)
+        if flood_ratio > 1.5:
+            adj['flood_frequency'] = min(adj.get('flood_frequency', 0.15) * 1.3, 0.35)
+        elif flood_ratio > 0.8:
+            adj['flood_frequency'] = max(adj.get('flood_frequency', 0.15) * 0.8, 0.05)
+        if dist < 1.0:
+            adj['distance_from_river'] = min(adj.get('distance_from_river', 0.18) * 1.5, 0.40)
+        elif dist_ratio < 0.3:
+            adj['distance_from_river'] = min(adj.get('distance_from_river', 0.18) * 1.2, 0.35)
+        if elev_cat != elev_norm:
+            adj['elevation_category'] = min(adj.get('elevation_category', 0.16) * 1.3, 0.35)
+        if soil != soil_norm:
+            adj['soil_type'] = min(adj.get('soil_type', 0.25) * 1.2, 0.40)
+        total = sum(adj.values())
+        if total > 0:
+            adj = {k: v / total for k, v in adj.items()}
+    except Exception:
+        pass
+    return adj
+
+
+
+
+
 import json
 
 RULES_PATH = os.path.join(os.path.dirname(__file__), 'data/region_rules.json')
@@ -241,7 +446,7 @@ def _fetch_elevation_m(lat, lon):
                     return (float(elev), 'open-elevation')
     except Exception:
         app.logger.debug('Open-elevation failed', exc_info=True)
-    # Try Open-Meteo as fallback (it often returns elevation in response)
+    
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
         r = requests.get(url, timeout=6)
@@ -292,30 +497,30 @@ def _generate_features_from_location(lat, lon):
     """
     meta = {'sources': {}}
 
-    # 1) Region rule lookup
+   
     rule = _lookup_region_rule(lat, lon)
 
-    # 2) Fetch rainfall (mm over past 24h)
+    
     rainfall_mm, rainfall_src = _fetch_recent_rainfall_mm(lat, lon)
     meta['sources']['rainfall'] = rainfall_src
 
-    # Map rainfall to numeric intensity if available
+    
     if rainfall_mm is not None:
         rainfall_intensity = float(rainfall_mm)
     else:
         rainfall_intensity = None
 
-    # Also derive a categorical rainfall bucket for explanation (Light/Moderate/Heavy)
+  
     rainfall_category = _rainfall_category_from_mm(rainfall_intensity)
     if rainfall_category is not None:
         meta['rainfall_category'] = rainfall_category
 
-    # 3) Elevation
+    #
     elev_m, elev_src = _fetch_elevation_m(lat, lon)
     meta['sources']['elevation'] = elev_src
     elev_cat = _elevation_category_from_m(elev_m)
 
-    # 4) Flood frequency & soil type from rule or fallback heuristics
+    
     flood_freq = None
     soil_type = None
     distance_from_river = None
@@ -330,7 +535,6 @@ def _generate_features_from_location(lat, lon):
         meta['region'] = rule.get('name')
         meta['sources']['region_rule'] = rule.get('name')
 
-    # Fallback heuristics when APIs or rules missing
     if rainfall_intensity is None:
         # Use rule value if available
         if rule is not None and rule.get('rainfall_intensity') is not None:
@@ -366,11 +570,10 @@ def _generate_features_from_location(lat, lon):
         'flood_frequency': float(flood_freq),
         'elevation_category': elev_cat,
         'distance_from_river': float(distance_from_river),
-        # Not used directly by current model but useful for explanations and potential retraining
         'rainfall_category': rainfall_category,
     }
 
-    # Include raw measured elevation if available
+   
     if elev_m is not None:
         meta['elevation_m'] = float(elev_m)
 
@@ -382,18 +585,16 @@ def predict_by_location():
     """Legacy compatibility endpoint: accepts JSON { latitude, longitude, region (optional) } and returns structured response.
     Delegates to the unified predict endpoint behavior but keeps the older path for existing clients."""
     data = request.get_json(force=True)
-    # forward to new predict logic by embedding into a unified call
+
     lat = data.get('latitude')
     lon = data.get('longitude')
     if lat is None or lon is None:
         return jsonify({'error': 'Missing latitude or longitude'}), 400
-    # reuse predict_v1 logic by creating a minimal payload
+    
     return predict_v1()
 
 
-# ---------------------------------------------------------------------------
-# New unified predict endpoint: accepts either manual features or just lat/lon
-# ---------------------------------------------------------------------------
+
 @app.route('/api/v1/predict', methods=['POST'])
 def predict_v1():
     """Versioned predict endpoint. Accepts either explicit features or only latitude/longitude.
@@ -406,7 +607,7 @@ def predict_v1():
         data = request.get_json(force=True)
         app.logger.debug(f"Predict request data: {data}")
 
-        # If lat/lon provided, generate features automatically
+     
         lat = data.get('latitude')
         lon = data.get('longitude')
         if lat is not None and lon is not None:
@@ -425,7 +626,7 @@ def predict_v1():
                 'rainfall_category': row_features.get('rainfall_category')
             }
         else:
-            # Backwards compatible manual inputs
+           
             required = ['soil_type', 'flood_frequency', 'rainfall_intensity', 'elevation_category']
             for k in required:
                 if k not in data:
@@ -446,22 +647,19 @@ def predict_v1():
         if model is None:
             return jsonify({'error': 'Model not loaded. Train and save a model with model/train_model.py'}), 500
 
-        # Backwards-compatible model object handling
+      
         if isinstance(model, dict):
             rf = model.get('rf')
             dt = model.get('dt')
-            pre = rf.named_steps['pre'] if hasattr(rf, 'named_steps') else None
-            rf_clf = rf.named_steps['clf'] if hasattr(rf, 'named_steps') else rf
-            importances = _aggregate_importances(rf, pre, rf_clf) if pre is not None else {}
         else:
-            # Older single-pipeline model
             rf = model
             dt = None
-            pre = rf.named_steps['pre'] if hasattr(rf, 'named_steps') else None
-            rf_clf = rf.named_steps['clf'] if hasattr(rf, 'named_steps') else rf
-            importances = _aggregate_importances(rf, pre, rf_clf) if pre is not None else {}
+        
+        # Compute feature importances for this specific prediction
+        importances = _local_feature_importance(rf, X) if hasattr(rf, 'named_steps') else {}
 
-        # Primary prediction (Random Forest)
+
+        
         try:
             proba = rf.predict_proba(X)[0]
             classes = list(rf.classes_)
@@ -473,7 +671,7 @@ def predict_v1():
             probs = None
             confidence = 1.0
 
-        # Decision tree comparison when available
+        
         dt_info = None
         agree = None
         if dt is not None:
@@ -489,9 +687,9 @@ def predict_v1():
             except Exception:
                 dt_info = None
 
-        # Post-process to avoid implausible HIGH calls: simple, explainable rules
+       
         def _postprocess(pred, confidence, row):
-            # If very low rainfall and high elevation, reduce high -> medium unless extremely confident
+          
             try:
                 rain = float(row.get('rainfall_intensity', 0.0))
                 elev = row.get('elevation_category')
@@ -501,16 +699,21 @@ def predict_v1():
                 if str(pred).lower() == 'high' and rain < 20.0 and elev == 'high' and confidence < 0.95:
                     return 'Medium', min(confidence + 0.05, 0.95), 'Adjusted from High to Medium because of low recent rainfall and high elevation.'
 
-                # Promote to High when multiple risk factors co-occur: heavy rainfall, frequent flooding, close to river
+                
                 if str(pred).lower() != 'high':
                     if rain >= 120.0 and flood >= 3.0 and dist <= 1.5:
-                        # increase confidence a bit but keep within bounds
+                        
                         return 'High', min(max(confidence, 0.6) + 0.05, 0.99), 'Upgraded to High due to heavy rain, frequent flooding and proximity to river.'
             except Exception:
                 pass
             return pred, confidence, None
 
         adj_pred, adj_conf, adj_note = _postprocess(pred, confidence, row)
+
+        # Compute region-adjusted importances instead of global static importances
+        base_importances = importances if importances else {}
+        rule = _lookup_region_rule(lat, lon) if lat is not None and lon is not None else None
+        importances = _compute_region_adjusted_importances(base_importances, row, rule, lat, lon)
 
         explanation = _simple_explanation(row, importances)
         if meta.get('region'):
@@ -533,7 +736,7 @@ def predict_v1():
             'disclaimer': 'Predictions are indicative and based on available environmental data.'
         }
 
-        # Add meta info and location if available
+
         if 'region' in meta:
             resp['region'] = meta['region']
         if lat is not None and lon is not None:
@@ -550,14 +753,11 @@ def predict_v1():
         return jsonify({'error': 'Server error', 'details': str(e)}), 500
 
 
-# Old manual-input predict handler removed; the new unified '/api/v1/predict' above handles both location-based and manual inputs.
 
-
-# Backwards compatible route
 @app.route("/predict", methods=["POST"])
 def predict():
-    # Simple wrapper for compatibility; call new v1 endpoint behavior
+  
     return predict_v1()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)

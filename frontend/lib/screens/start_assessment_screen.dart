@@ -20,13 +20,12 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
   final _latController = TextEditingController();
   final _lonController = TextEditingController();
   final _placeNameController = TextEditingController();
-  String _manualEntryMode = 'coordinates'; // 'coordinates' or 'place'
-
+  String _manualEntryMode = 'coordinates'; 
   Future<void> _handlePrimary() async {
     setState(() => _isLoading = true);
 
     try {
-      // If a test hook is provided, skip permission checks to simplify tests
+
       if (widget.getLocation == null) {
         var permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
@@ -49,12 +48,11 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
         }
       }
 
-      // Get precise location (test hook or real geolocator)
       Map<String, double>? loc;
       if (widget.getLocation != null) {
         loc = await widget.getLocation!();
       } else {
-        // On web, prefer getCurrentPosition directly (getLastKnownPosition unsupported)
+
         if (kIsWeb) {
           final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
           loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
@@ -68,7 +66,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
         throw Exception('Could not determine location. Please ensure location services are enabled.');
       }
 
-      // Try to obtain a friendly region name (best-effort, non-blocking)
+
       String? regionName;
       try {
         regionName = await ApiService.reverseGeocode(loc['latitude']!, loc['longitude']!);
@@ -85,7 +83,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        // Show improved error messages
+
         String message = 'Analysis failed: ${e.toString()}';
         if (e.toString().contains('Missing field')) {
           message = 'Analysis failed: Server rejected request (missing data). Server response: ${e.toString()}';
@@ -100,7 +98,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
   Future<void> _handleApproximate() async {
     setState(() => _isLoading = true);
     try {
-      // If a test hook is provided, skip permission checks to simplify tests
+
       if (widget.getLocation == null) {
         var permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
@@ -114,12 +112,11 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
         }
       }
 
-      // Try last known position first or use test hook
       Map<String, double>? loc;
       if (widget.getLocation != null) {
         loc = await widget.getLocation!();
       } else {
-        // On web, getLastKnownPosition is not supported; use getCurrentPosition with low accuracy
+
         if (kIsWeb) {
           final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
           loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
@@ -129,7 +126,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
             pos ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
             loc = {'latitude': pos!.latitude, 'longitude': pos.longitude};
           } catch (e) {
-            // Fallback to current position if lastKnown is unsupported
+
             final pos2 = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
             loc = {'latitude': pos2.latitude, 'longitude': pos2.longitude};
           }
@@ -162,7 +159,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
       double? lat, lon;
 
       if (_manualEntryMode == 'coordinates') {
-        // Parse latitude and longitude from text fields
+
         if (_latController.text.isEmpty || _lonController.text.isEmpty) {
           throw Exception('Please enter both latitude and longitude');
         }
@@ -175,11 +172,11 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
           throw Exception('Latitude must be -90 to 90, longitude must be -180 to 180');
         }
       } else {
-        // Parse place name (for now, we'll just use it as a label; in future, integrate geocoding)
+
         if (_placeNameController.text.isEmpty) {
           throw Exception('Please enter a place name or coordinates');
         }
-        // TODO: In future, integrate with a geocoding service to convert place name to coordinates
+ 
         throw Exception('Place name search not yet available. Please use coordinates (latitude, longitude).');
       }
 
@@ -187,7 +184,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
         throw Exception('Could not parse location');
       }
 
-      // Try to obtain a friendly region name (best-effort, non-blocking)
+
       String? regionName;
       try {
         regionName = await ApiService.reverseGeocode(lat, lon);
@@ -285,7 +282,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
 
             const SizedBox(height: 16),
 
-            // Manual location entry expander (for checking other areas)
+
             Card(
               elevation: 1,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

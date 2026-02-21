@@ -4,10 +4,10 @@ class PredictionResult {
   final Map<String, dynamic>? probabilities;
   final String explanation;
   final String? recommendation;
-  final List<dynamic>? featureImportances; // list of {feature, importance}
+  final List<dynamic>? featureImportances; 
   final List<String>? influencingFactors;
   final String? region;
-  final Map<String, dynamic>? location; // {'latitude':.., 'longitude':..}
+  final Map<String, dynamic>? location; 
   final Map<String, dynamic>? inferredFeatures;
   final String? disclaimer;
 

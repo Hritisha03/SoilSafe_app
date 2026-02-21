@@ -45,7 +45,7 @@ class HomeScreen extends StatelessWidget {
                     Text('Soil Safety Checker', style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 10),
                     Text(
-                      'A rapid, interpretable post-flood triage tool. Use this to prioritize inspections — not a substitute for on-site geotechnical assessment.',
+                      'A rapid, location-based decision-support tool for disaster management. Use this to prioritize inspections — not a substitute for on-site geotechnical assessment.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
@@ -54,8 +54,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Primary CTA — navigates to a dedicated Start Assessment screen
+            
             ElevatedButton.icon(
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StartAssessmentScreen())),
               icon: const Icon(Icons.play_arrow_rounded),
@@ -64,7 +63,7 @@ class HomeScreen extends StatelessWidget {
                 child: Text('Start Assessment', style: TextStyle(fontSize: 16)),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D32), // Forest green
+                backgroundColor: const Color(0xFF2E7D32), 
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -74,10 +73,9 @@ class HomeScreen extends StatelessWidget {
 
             const SizedBox(height: 18),
 
-            // Secondary action
             OutlinedButton.icon(
               onPressed: () async {
-                // show loading dialog
+               
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -86,10 +84,10 @@ class HomeScreen extends StatelessWidget {
 
                 final res = await ApiService.healthCheck();
 
-                // close loading
+               
                 Navigator.of(context).pop();
 
-                // show result
+                
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(

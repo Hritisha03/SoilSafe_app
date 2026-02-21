@@ -9,11 +9,11 @@ class ResultsScreen extends StatelessWidget {
   Color _colorForRisk(String r) {
     switch (r.toLowerCase()) {
       case 'high':
-        return const Color(0xFFC62828); // Soft Red
+        return const Color(0xFFC62828); 
       case 'medium':
-        return const Color(0xFFF9A825); // Amber
+        return const Color(0xFFF9A825); 
       default:
-        return const Color(0xFF2E7D32); // Deep Forest Green
+        return const Color(0xFF2E7D32); 
     }
   }
 
@@ -87,7 +87,7 @@ class ResultsScreen extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // Risk banner (dominant)
+          
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -110,7 +110,7 @@ class ResultsScreen extends StatelessWidget {
 
           const SizedBox(height: 14),
 
-          // Recommendation
+         
           if (result.recommendation != null) Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -126,7 +126,7 @@ class ResultsScreen extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Influencing factors (short list)
+
           if (result.influencingFactors != null && result.influencingFactors!.isNotEmpty) Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -142,7 +142,7 @@ class ResultsScreen extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Feature importances
+
           if (result.featureImportances != null && result.featureImportances!.isNotEmpty) Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -169,7 +169,6 @@ class ResultsScreen extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Inferred features (when prediction originated from GPS)
           if (result.inferredFeatures != null && result.inferredFeatures!.isNotEmpty) Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
