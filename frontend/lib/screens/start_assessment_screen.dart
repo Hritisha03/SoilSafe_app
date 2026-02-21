@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
+import '../widgets/custom_widgets.dart';
+import '../theme/app_theme.dart';
 import 'results_screen.dart';
 
 class StartAssessmentScreen extends StatefulWidget {
- 
   final Future<Map<String, double>> Function()? getLocation;
 
   const StartAssessmentScreen({Key? key, this.getLocation}) : super(key: key);
@@ -14,18 +15,37 @@ class StartAssessmentScreen extends StatefulWidget {
   State<StartAssessmentScreen> createState() => _StartAssessmentScreenState();
 }
 
-class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
+class _StartAssessmentScreenState extends State<StartAssessmentScreen> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   bool _showManualEntry = false;
   final _latController = TextEditingController();
   final _lonController = TextEditingController();
   final _placeNameController = TextEditingController();
-  String _manualEntryMode = 'coordinates'; 
+  String _manualEntryMode = 'coordinates';
+  late AnimationController _expandController;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _expandController.dispose();
+    _latController.dispose();
+    _lonController.dispose();
+    _placeNameController.dispose();
+    super.dispose();
+  }
+
   Future<void> _handlePrimary() async {
     setState(() => _isLoading = true);
 
     try {
-
       if (widget.getLocation == null) {
         var permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
@@ -34,15 +54,9 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
         if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
           setState(() => _isLoading = false);
           if (!mounted) return;
-          showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('Location permission required'),
-              content: const Text('Location access is needed to assess soil safety for your area. Please enable location permission in settings.'),
-              actions: [
-                TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
-              ],
-            ),
+          _showErrorDialog(
+            'Location Permission Required',
+            'Location access is needed to assess soil safety for your area. Please enable location permission in settings.',
           );
           return;
         }
@@ -52,20 +66,13 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
       if (widget.getLocation != null) {
         loc = await widget.getLocation!();
       } else {
-
-        if (kIsWeb) {
-          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-          loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
-        } else {
-          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-          loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
-        }
+        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+        loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
       }
 
       if (loc == null) {
         throw Exception('Could not determine location. Please ensure location services are enabled.');
       }
-
 
       String? regionName;
       try {
@@ -81,75 +88,40 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
 
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ResultsScreen(result: result)));
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-
-        String message = 'Analysis failed: ${e.toString()}';
-        if (e.toString().contains('Missing field')) {
-          message = 'Analysis failed: Server rejected request (missing data). Server response: ${e.toString()}';
-        } else if (e.toString().contains('Failed to call backend') || e.toString().contains('API error')) {
-          message = 'Analysis failed: Could not contact backend or backend returned an error. Details: ${e.toString()}';
-        }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-      }
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      _showErrorDialog('Assessment Error', e.toString());
     }
   }
 
   Future<void> _handleApproximate() async {
     setState(() => _isLoading = true);
+
     try {
+      const defaultCoord = 20.5937;
+      Map<String, double> loc = {'latitude': defaultCoord, 'longitude': defaultCoord};
 
-      if (widget.getLocation == null) {
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-        if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-          setState(() => _isLoading = false);
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission denied.')));
-          return;
-        }
+      String? regionName;
+      try {
+        regionName = await ApiService.reverseGeocode(loc['latitude']!, loc['longitude']!);
+      } catch (_) {
+        regionName = null;
       }
 
-      Map<String, double>? loc;
-      if (widget.getLocation != null) {
-        loc = await widget.getLocation!();
-      } else {
-
-        if (kIsWeb) {
-          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
-          loc = {'latitude': pos.latitude, 'longitude': pos.longitude};
-        } else {
-          try {
-            Position? pos = await Geolocator.getLastKnownPosition();
-            pos ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
-            loc = {'latitude': pos!.latitude, 'longitude': pos.longitude};
-          } catch (e) {
-
-            final pos2 = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
-            loc = {'latitude': pos2.latitude, 'longitude': pos2.longitude};
-          }
-        }
-      }
-
-      if (loc == null) throw Exception('Could not determine location for approximate assessment.');
-
-      final result = await ApiService.predictByLocation(loc['latitude']!, loc['longitude']!);
+      final result = await ApiService.predictByLocation(loc['latitude']!, loc['longitude']!, region: regionName);
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ResultsScreen(result: result)));
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        String message = 'Analysis failed: $e';
-        if (e.toString().contains('UNSUPPORTED_OPERATION') || e.toString().contains('getLastKnownPosition')) {
-          message = 'Analysis failed: Last known position is not available on this platform. Using current location failed as well.';
-        }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      String message = e.toString();
+      if (message.contains('Soil type')) {
+        message = 'Missing soil type. Please enter soil conditions manually.';
       }
+      _showErrorDialog('Approximate Location Error', message);
     }
   }
 
@@ -159,7 +131,6 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
       double? lat, lon;
 
       if (_manualEntryMode == 'coordinates') {
-
         if (_latController.text.isEmpty || _lonController.text.isEmpty) {
           throw Exception('Please enter both latitude and longitude');
         }
@@ -172,18 +143,15 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
           throw Exception('Latitude must be -90 to 90, longitude must be -180 to 180');
         }
       } else {
-
         if (_placeNameController.text.isEmpty) {
           throw Exception('Please enter a place name or coordinates');
         }
- 
         throw Exception('Place name search not yet available. Please use coordinates (latitude, longitude).');
       }
 
       if (lat == null || lon == null) {
         throw Exception('Could not parse location');
       }
-
 
       String? regionName;
       try {
@@ -199,168 +167,281 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> {
 
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ResultsScreen(result: result)));
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        String message = 'Analysis failed: ${e.toString()}';
-        if (e.toString().contains('Missing field')) {
-          message = 'Analysis failed: Server rejected request (missing data). Details: ${e.toString()}';
-        } else if (e.toString().contains('API error') || e.toString().contains('Failed to call backend')) {
-          message = 'Analysis failed: Backend error. Details: ${e.toString()}';
-        }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-      }
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      _showErrorDialog('Manual Entry Error', e.toString());
     }
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title, style: const TextStyle(color: AppTheme.highRiskRed)),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Start Soil Safety Assessment'),
+        title: const Text('Start Assessment'),
         elevation: 0,
         centerTitle: true,
-        backgroundColor: Colors.transparent,
-        foregroundColor: Theme.of(context).colorScheme.primary,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 28.0, horizontal: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(Icons.location_on_outlined, size: 56, color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(height: 18),
-                    Text('Start Soil Safety Assessment', style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
-                    const SizedBox(height: 8),
-                    Text(
-                      'We use your location to assess soil safety in your area',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
+            // Header Card
+            CustomCard(
+              backgroundColor: AppTheme.primaryGreen.withOpacity(0.08),
+              border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2), width: 1),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Location will be used only to provide regional soil safety guidance. You can choose precise or approximate location.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    padding: const EdgeInsets.all(12),
+                    child: const Icon(
+                      Icons.location_on_outlined,
+                      size: 40,
+                      color: AppTheme.primaryGreen,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Start Soil Assessment',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Provide your location to get personalized soil safety guidance',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
               ),
             ),
 
             const SizedBox(height: 24),
 
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-                    onPressed: _handlePrimary,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E7D32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 14.0),
-                    ),
-                    child: const Text('Allow Location & Start Analysis', style: TextStyle(fontSize: 16)),
-                  ),
-
-            const SizedBox(height: 12),
-
-            OutlinedButton(
-              onPressed: _handleApproximate,
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 12.0),
-              ),
-              child: const Text('Use approximate location'),
-            ),
-
-            const SizedBox(height: 16),
-
-
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
+            // Primary Location Button
+            if (_isLoading)
+              Center(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    InkWell(
-                      onTap: () => setState(() => _showManualEntry = !_showManualEntry),
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Assessing soil safety...',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              PrimaryButton(
+                label: 'Use My Current Location',
+                icon: Icons.location_searching,
+                onPressed: _handlePrimary,
+              ),
+
+              const SizedBox(height: 12),
+
+              SecondaryButton(
+                label: 'Use Approximate Location',
+                icon: Icons.my_location,
+                onPressed: _handleApproximate,
+              ),
+            ],
+
+            const SizedBox(height: 24),
+
+            // Manual Entry Section
+            CustomCard(
+              padding: const EdgeInsets.all(0),
+              border: Border.all(color: AppTheme.dividerColor, width: 1),
+              child: Column(
+                children: [
+                  // Expandable Header
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _showManualEntry = !_showManualEntry);
+                        if (_showManualEntry) {
+                          _expandController.forward();
+                        } else {
+                          _expandController.reverse();
+                        }
+                      },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        padding: const EdgeInsets.all(16),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'Check other areas',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                            Row(
+                              children: [
+                                const Icon(Icons.edit_location_alt, color: AppTheme.primaryGreen),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Manual Location Entry',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                              ],
                             ),
-                            Icon(_showManualEntry ? Icons.expand_less : Icons.expand_more),
+                            RotationTransition(
+                              turns: Tween(begin: 0.0, end: 0.5).animate(_expandController),
+                              child: const Icon(Icons.expand_more, color: AppTheme.primaryGreen),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                    if (_showManualEntry) ...[
-                      const SizedBox(height: 12),
-                      Text('Enter coordinates for any location to check flood risk:', style: Theme.of(context).textTheme.bodySmall),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _latController,
-                        keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Latitude (-90 to 90)',
-                          hintText: '22.5726',
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+
+                  // Expanded Content
+                  AnimatedCrossFade(
+                    firstChild: const SizedBox.shrink(),
+                    secondChild: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Mode Toggle
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: SegmentedButton<String>(
+                                      segments: const <ButtonSegment<String>>[
+                                        ButtonSegment<String>(
+                                          value: 'coordinates',
+                                          label: Text('Coordinates'),
+                                          icon: Icon(Icons.pin_drop),
+                                        ),
+                                        ButtonSegment<String>(
+                                          value: 'place',
+                                          label: Text('Place Name'),
+                                          icon: Icon(Icons.place),
+                                        ),
+                                      ],
+                                      selected: <String>{_manualEntryMode},
+                                      onSelectionChanged: (Set<String> newSelection) {
+                                        setState(() => _manualEntryMode = newSelection.first);
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Coordinates Input
+                              if (_manualEntryMode == 'coordinates') ...[
+                                TextField(
+                                  controller: _latController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Latitude (-90 to 90)',
+                                    prefixIcon: Icon(Icons.north_outlined),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _lonController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Longitude (-180 to 180)',
+                                    prefixIcon: Icon(Icons.east_outlined),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ] else ...[
+                                TextField(
+                                  controller: _placeNameController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Place Name',
+                                    prefixIcon: Icon(Icons.place),
+                                    hintText: 'e.g., New York, Tokyo',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Note: Place name search is not yet available',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppTheme.highRiskRed,
+                                  ),
+                                ),
+                              ],
+
+                              const SizedBox(height: 16),
+
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : _handleManualLocation,
+                                  child: const Text('Analyze This Location'),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _lonController,
-                        keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Longitude (-180 to 180)',
-                          hintText: '88.3639',
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _handleManualLocation,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1976D2),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(vertical: 12.0),
-                        ),
-                        child: _isLoading ? const CircularProgressIndicator() : const Text('Analyze this location'),
-                      ),
-                    ],
-                  ],
-                ),
+                      ],
+                    ),
+                    crossFadeState: _showManualEntry ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                    duration: const Duration(milliseconds: 300),
+                  ),
+                ],
               ),
             ),
 
-            const SizedBox(height: 16),
-            Center(child: Text('You will be asked to grant location permission. This app provides guidance only.', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center)),
+            const SizedBox(height: 24),
+
+            // Info Message
+            CustomCard(
+              backgroundColor: AppTheme.veryLightGreen,
+              border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2), width: 1),
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppTheme.primaryGreen, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Your location is used only to provide regional guidance. You can use approximate coordinates.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _latController.dispose();
-    _lonController.dispose();
-    _placeNameController.dispose();
-    super.dispose();
   }
 }
