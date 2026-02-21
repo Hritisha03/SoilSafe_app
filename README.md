@@ -14,4 +14,3 @@ Quick start
 1. Backend: see `backend/README.md` for running the Flask API.
 2. Frontend: open `frontend/` in Flutter; see `frontend/README.md` for instructions.
 
-License: MIT (adapt for your needs)
