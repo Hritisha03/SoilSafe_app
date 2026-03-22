@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'input_form_screen.dart';
 import 'info_screen.dart';
 import 'start_assessment_screen.dart';
 import 'results_screen.dart';
@@ -28,11 +27,13 @@ class HomeScreen extends StatelessWidget {
             // Gradient Hero Section
             GradientHeroSection(
               title: 'SoilSafe',
-              subtitle: 'Soil Safety Checker - A rapid, location-based decision-support tool for disaster management',
+              subtitle:
+                  'Soil Safety Checker - A rapid, location-based decision-support tool for disaster management',
               icon: Icons.park,
               onActionPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const StartAssessmentScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const StartAssessmentScreen()),
               ),
             ),
 
@@ -45,8 +46,8 @@ class HomeScreen extends StatelessWidget {
                   Text(
                     'Takes under a minute • For guidance only',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textTertiary,
-                    ),
+                          color: AppTheme.textTertiary,
+                        ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -93,9 +94,13 @@ class HomeScreen extends StatelessWidget {
                   context: context,
                   builder: (context) => AlertDialog(
                     title: Text(
-                      res['ok'] ? '✓ Connection Successful' : '✗ Connection Failed',
+                      res['ok']
+                          ? '✓ Connection Successful'
+                          : '✗ Connection Failed',
                       style: TextStyle(
-                        color: res['ok'] ? AppTheme.lowRiskGreen : AppTheme.highRiskRed,
+                        color: res['ok']
+                            ? AppTheme.lowRiskGreen
+                            : AppTheme.highRiskRed,
                       ),
                     ),
                     content: Text(

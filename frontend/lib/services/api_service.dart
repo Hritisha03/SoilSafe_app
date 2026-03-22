@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/prediction_result.dart';
 import '../models/input_data.dart';
+import 'assessment_database.dart';
+import 'network_service.dart';
 
 class ApiService {
 
@@ -14,21 +17,48 @@ class ApiService {
     return 'http://10.0.2.2:5000'; 
   }
 
+  static String _extractErrorMessage(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic>) {
+        final error = body['error'];
+        if (error is String && error.trim().isNotEmpty) {
+          return error.trim();
+        }
+      }
+    } catch (_) {}
+    return 'Request failed with status ${res.statusCode}.';
+  }
+
   static Future<PredictionResult> predict(InputData data) async {
     final uri = Uri.parse('$baseUrl/api/v1/predict');
     try {
-      final res = await http
-          .post(uri, body: jsonEncode(data.toJson()), headers: {'Content-Type': 'application/json'})
-          .timeout(const Duration(seconds: 10));
+      int retries = 2;
+      http.Response res;
+      while (true) {
+        try {
+          res = await http
+              .post(uri, body: jsonEncode(data.toJson()), headers: {'Content-Type': 'application/json'})
+              .timeout(const Duration(seconds: 20));
+          break;
+        } catch (e) {
+          if (--retries <= 0) rethrow;
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
 
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
         return PredictionResult.fromJson(json);
       } else {
-        throw Exception('API error: ${res.statusCode} ${res.body}');
+        throw Exception(_extractErrorMessage(res));
       }
+    } on http.ClientException {
+      throw Exception('Failed to call backend at $baseUrl. Ensure the backend is running and reachable from this device.');
+    } on TimeoutException {
+      throw Exception('The backend at $baseUrl took too long to respond. Please try again.');
     } catch (e) {
-      throw Exception('Failed to call backend at $baseUrl. Ensure the backend is running and reachable from this device. Details: $e');
+      rethrow;
     }
   }
 
@@ -45,35 +75,91 @@ class ApiService {
     if (region != null) body['region'] = region;
 
     try {
-      final res = await http
-          .post(uri, body: jsonEncode(body), headers: {'Content-Type': 'application/json'})
-          .timeout(const Duration(seconds: 12));
+      int retries = 2;
+      http.Response res;
+      while (true) {
+        try {
+          res = await http
+              .post(uri, body: jsonEncode(body), headers: {'Content-Type': 'application/json'})
+              .timeout(const Duration(seconds: 25));
+          break;
+        } catch (e) {
+          if (--retries <= 0) rethrow;
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
-        return PredictionResult.fromJson(json);
+        final result = PredictionResult.fromJson(json);
+        
+        // Save successful prediction to local database for offline access
+        try {
+          await AssessmentDatabase.saveAssessment(
+            latitude: latitude,
+            longitude: longitude,
+            region: region,
+            input: body,
+            result: json,
+          );
+        } catch (e) {
+          // Silently fail - don't block on database save
+        }
+        
+        return result;
       } else {
-
         if (res.statusCode == 400 && res.body.contains('Missing field')) {
           final legacyUri = Uri.parse('$baseUrl/api/v1/predict-location');
           try {
             final legacyRes = await http
                 .post(legacyUri, body: jsonEncode(body), headers: {'Content-Type': 'application/json'})
-                .timeout(const Duration(seconds: 12));
+                .timeout(const Duration(seconds: 25));
             if (legacyRes.statusCode == 200) {
               final json = jsonDecode(legacyRes.body);
-              return PredictionResult.fromJson(json);
+              final result = PredictionResult.fromJson(json);
+              
+              // Save to database
+              try {
+                await AssessmentDatabase.saveAssessment(
+                  latitude: latitude,
+                  longitude: longitude,
+                  region: region,
+                  input: body,
+                  result: json,
+                );
+              } catch (e) {}
+              
+              return result;
             } else {
-              throw Exception('API error: ${legacyRes.statusCode} ${legacyRes.body}');
+              throw Exception(_extractErrorMessage(legacyRes));
             }
           } catch (e) {
-            throw Exception('API error (fallback failed): ${e}');
+            throw Exception(e.toString().replaceFirst('Exception: ', ''));
           }
         }
 
-        throw Exception('API error: ${res.statusCode} ${res.body}');
+        throw Exception(_extractErrorMessage(res));
       }
     } catch (e) {
-      throw Exception('Failed to call backend at $baseUrl. Ensure the backend is running and reachable from this device. Details: $e');
+      // Network error - try to fetch cached result from nearby location
+      final isOnline = await NetworkService().checkConnectivity();
+      if (!isOnline) {
+        try {
+          final cached = await AssessmentDatabase.searchByLocation(latitude, longitude, radiusKm: 20.0);
+          if (cached.isNotEmpty) {
+            final resultJson = jsonDecode(cached.first['result_json']);
+            return PredictionResult.fromJson(resultJson);
+          }
+        } catch (_) {}
+        
+        throw Exception('Offline - No cached assessment found nearby. Please try again when online.');
+      }
+      if (e is http.ClientException) {
+        throw Exception('Failed to call backend at $baseUrl. Ensure the backend is running and reachable from this device.');
+      }
+      if (e is TimeoutException) {
+        throw Exception('The backend at $baseUrl took too long to respond. Please try again.');
+      }
+      rethrow;
     }
   }
 

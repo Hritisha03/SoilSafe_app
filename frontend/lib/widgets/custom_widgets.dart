@@ -23,7 +23,7 @@ class CustomCard extends StatelessWidget {
     this.border,
     this.boxShadow,
     this.onTap,
-    this.elevated = false,
+    this.elevated = true,
   }) : super(key: key);
 
   @override
@@ -38,6 +38,11 @@ class CustomCard extends StatelessWidget {
             color: Colors.black.withOpacity(0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           )
         ] : []),
       ),
@@ -414,6 +419,7 @@ class _RiskCardState extends State<RiskCard> with SingleTickerProviderStateMixin
               style: Theme.of(context).textTheme.displayMedium?.copyWith(
                 color: color,
                 fontWeight: FontWeight.w700,
+                fontSize: 40,
               ),
             ),
             const SizedBox(height: 12),
@@ -428,7 +434,7 @@ class _RiskCardState extends State<RiskCard> with SingleTickerProviderStateMixin
               borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
                 value: widget.confidence,
-                minHeight: 8,
+                minHeight: 12,
                 backgroundColor: color.withOpacity(0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(color),
               ),
@@ -516,7 +522,8 @@ class ProbabilityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 120, maxWidth: 180),
       child: CustomCard(
         backgroundColor: color.withOpacity(0.08),
         padding: const EdgeInsets.all(12),
@@ -524,6 +531,7 @@ class ProbabilityCard extends StatelessWidget {
           children: [
             Text(
               label,
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 color: color,
               ),

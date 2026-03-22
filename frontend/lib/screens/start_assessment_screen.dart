@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
+import '../models/input_data.dart';
 import '../widgets/custom_widgets.dart';
 import '../theme/app_theme.dart';
 import 'results_screen.dart';
@@ -21,6 +22,13 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
   final _latController = TextEditingController();
   final _lonController = TextEditingController();
   final _placeNameController = TextEditingController();
+  // Manual parameter entry controllers
+  final _soilTypeController = TextEditingController();
+  final _floodFrequencyController = TextEditingController();
+  final _rainfallIntensityController = TextEditingController();
+  final _elevationCategoryController = TextEditingController();
+  final _distanceFromRiverController = TextEditingController();
+  final _regionController = TextEditingController();
   String _manualEntryMode = 'coordinates';
   late AnimationController _expandController;
 
@@ -39,6 +47,12 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
     _latController.dispose();
     _lonController.dispose();
     _placeNameController.dispose();
+    _soilTypeController.dispose();
+    _floodFrequencyController.dispose();
+    _rainfallIntensityController.dispose();
+    _elevationCategoryController.dispose();
+    _distanceFromRiverController.dispose();
+    _regionController.dispose();
     super.dispose();
   }
 
@@ -173,6 +187,74 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
     }
   }
 
+  Future<void> _handleManualParameters() async {
+    setState(() => _isLoading = true);
+    try {
+      // Validate required fields
+      if (_soilTypeController.text.isEmpty) {
+        throw Exception('Please enter soil type');
+      }
+      if (_floodFrequencyController.text.isEmpty) {
+        throw Exception('Please enter flood frequency');
+      }
+      if (_rainfallIntensityController.text.isEmpty) {
+        throw Exception('Please enter rainfall intensity');
+      }
+      if (_elevationCategoryController.text.isEmpty) {
+        throw Exception('Please enter elevation category');
+      }
+
+      // Parse and validate numeric fields
+      final floodFrequency = int.tryParse(_floodFrequencyController.text);
+      final rainfallIntensity = double.tryParse(_rainfallIntensityController.text);
+      final distanceFromRiver = _distanceFromRiverController.text.isEmpty ? 0.0 : double.tryParse(_distanceFromRiverController.text);
+
+      if (floodFrequency == null || floodFrequency < 0 || floodFrequency > 10) {
+        throw Exception('Flood frequency must be a number between 0 and 10');
+      }
+      if (rainfallIntensity == null || rainfallIntensity < 0) {
+        throw Exception('Rainfall intensity must be a positive number');
+      }
+      if (distanceFromRiver != null && distanceFromRiver < 0) {
+        throw Exception('Distance from river must be a positive number');
+      }
+
+      // Validate soil type
+      final validSoilTypes = ['clay', 'silt', 'sand', 'loam'];
+      if (!validSoilTypes.contains(_soilTypeController.text.toLowerCase())) {
+        throw Exception('Soil type must be one of: clay, silt, sand, loam');
+      }
+
+      // Validate elevation category
+      final validElevationCategories = ['low', 'mid', 'high'];
+      if (!validElevationCategories.contains(_elevationCategoryController.text.toLowerCase())) {
+        throw Exception('Elevation category must be one of: low, mid, high');
+      }
+
+      // Create InputData object
+      final inputData = InputData(
+        soilType: _soilTypeController.text.toLowerCase(),
+        floodFrequency: floodFrequency,
+        rainfallIntensity: rainfallIntensity,
+        elevationCategory: _elevationCategoryController.text.toLowerCase(),
+        distanceFromRiver: distanceFromRiver,
+        region: _regionController.text.isEmpty ? null : _regionController.text,
+      );
+
+      // Call API
+      final result = await ApiService.predict(inputData);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ResultsScreen(result: result)));
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      _showErrorDialog('Manual Parameter Entry Error', e.toString());
+    }
+  }
+
   void _showErrorDialog(String title, String message) {
     showDialog(
       context: context,
@@ -304,7 +386,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
                                 const Icon(Icons.edit_location_alt, color: AppTheme.primaryGreen),
                                 const SizedBox(width: 12),
                                 Text(
-                                  'Manual Location Entry',
+                                  'Manual Entry',
                                   style: Theme.of(context).textTheme.titleMedium,
                                 ),
                               ],
@@ -347,6 +429,11 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
                                           label: Text('Place Name'),
                                           icon: Icon(Icons.place),
                                         ),
+                                        ButtonSegment<String>(
+                                          value: 'parameters',
+                                          label: Text('Parameters'),
+                                          icon: Icon(Icons.edit),
+                                        ),
                                       ],
                                       selected: <String>{_manualEntryMode},
                                       onSelectionChanged: (Set<String> newSelection) {
@@ -359,7 +446,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
 
                               const SizedBox(height: 16),
 
-                              // Coordinates Input
+                              // Input fields based on mode
                               if (_manualEntryMode == 'coordinates') ...[
                                 TextField(
                                   controller: _latController,
@@ -378,7 +465,7 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
                                   ),
                                   keyboardType: TextInputType.number,
                                 ),
-                              ] else ...[
+                              ] else if (_manualEntryMode == 'place') ...[
                                 TextField(
                                   controller: _placeNameController,
                                   decoration: const InputDecoration(
@@ -394,6 +481,80 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
                                     color: AppTheme.highRiskRed,
                                   ),
                                 ),
+                              ] else if (_manualEntryMode == 'parameters') ...[
+                                // Soil Type Dropdown
+                                DropdownButtonFormField<String>(
+                                  value: _soilTypeController.text.isEmpty ? null : _soilTypeController.text,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Soil Type',
+                                    prefixIcon: Icon(Icons.grass),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(value: 'clay', child: Text('Clay')),
+                                    DropdownMenuItem(value: 'silt', child: Text('Silt')),
+                                    DropdownMenuItem(value: 'sand', child: Text('Sand')),
+                                    DropdownMenuItem(value: 'loam', child: Text('Loam')),
+                                  ],
+                                  onChanged: (value) => setState(() => _soilTypeController.text = value ?? ''),
+                                ),
+                                const SizedBox(height: 12),
+                                // Flood Frequency
+                                TextField(
+                                  controller: _floodFrequencyController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Flood Frequency (0-10)',
+                                    prefixIcon: Icon(Icons.flood),
+                                    hintText: 'How often does flooding occur?',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                                const SizedBox(height: 12),
+                                // Rainfall Intensity
+                                TextField(
+                                  controller: _rainfallIntensityController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Rainfall Intensity (mm)',
+                                    prefixIcon: Icon(Icons.water_drop),
+                                    hintText: 'Recent rainfall in millimeters',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                                const SizedBox(height: 12),
+                                // Elevation Category Dropdown
+                                DropdownButtonFormField<String>(
+                                  value: _elevationCategoryController.text.isEmpty ? null : _elevationCategoryController.text,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Elevation Category',
+                                    prefixIcon: Icon(Icons.terrain),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(value: 'low', child: Text('Low (< 50m)')),
+                                    DropdownMenuItem(value: 'mid', child: Text('Medium (50-300m)')),
+                                    DropdownMenuItem(value: 'high', child: Text('High (> 300m)')),
+                                  ],
+                                  onChanged: (value) => setState(() => _elevationCategoryController.text = value ?? ''),
+                                ),
+                                const SizedBox(height: 12),
+                                // Distance from River
+                                TextField(
+                                  controller: _distanceFromRiverController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Distance from River (km)',
+                                    prefixIcon: Icon(Icons.waves),
+                                    hintText: 'Distance in kilometers (optional)',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                                const SizedBox(height: 12),
+                                // Region
+                                TextField(
+                                  controller: _regionController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Region (optional)',
+                                    prefixIcon: Icon(Icons.location_city),
+                                    hintText: 'e.g., West Bengal Coast',
+                                  ),
+                                ),
                               ],
 
                               const SizedBox(height: 16),
@@ -401,8 +562,8 @@ class _StartAssessmentScreenState extends State<StartAssessmentScreen> with Sing
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _handleManualLocation,
-                                  child: const Text('Analyze This Location'),
+                                  onPressed: _isLoading ? null : (_manualEntryMode == 'parameters' ? _handleManualParameters : _handleManualLocation),
+                                  child: Text(_manualEntryMode == 'parameters' ? 'Analyze Parameters' : 'Analyze This Location'),
                                 ),
                               ),
                             ],

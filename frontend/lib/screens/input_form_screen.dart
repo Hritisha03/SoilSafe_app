@@ -77,42 +77,18 @@ class _InputFormScreenState extends State<InputFormScreen> {
     if (geocode == null) return null;
     final g = geocode.toLowerCase();
 
-    if (g.contains('assam') ||
-        g.contains('brahmaputra') ||
-        g.contains('guwahati') ||
-        g.contains('dibrugarh')) return 'Brahmaputra Valley (Assam)';
-    if (g.contains('kolkata') ||
-        g.contains('west bengal') ||
-        g.contains('sunderbans') ||
-        g.contains('sundarban')) return 'West Bengal Coast';
-    if (g.contains('andhra') ||
-        g.contains('godavari') ||
-        g.contains('visakhapatnam')) return 'Coastal Andhra & Godavari Basin';
-    if (g.contains('odisha') ||
-        g.contains('mahanadi') ||
-        g.contains('bhubaneswar')) return 'Odisha Coast & Mahanadi';
-    if (g.contains('kerala') ||
-        g.contains('thiruvananthapuram') ||
-        g.contains('kochi')) return 'Kerala (Monsoon-prone)';
-    if (g.contains('bengal') ||
-        g.contains('ganges') ||
-        g.contains('ganga') ||
-        g.contains('patna') ||
-        g.contains('varanasi')) return 'Ganga Plains (UP/Bihar)';
-    if (g.contains('gujarat') ||
-        g.contains('kutch') ||
-        g.contains('surat')) return 'Gujarat Coast';
-    if (g.contains('maharashtra') ||
-        g.contains('mumbai') ||
-        g.contains('konkan')) return 'Konkan & Goa';
-    if (g.contains('himachal') ||
-        g.contains('uttarakhand') ||
-        g.contains('shimla')) return 'Himachal / Uttarakhand (Hill floods)';
+    if (g.contains('assam') || g.contains('brahmaputra') || g.contains('guwahati') || g.contains('dibrugarh')) return 'Brahmaputra Valley (Assam)';
+    if (g.contains('kolkata') || g.contains('west bengal') || g.contains('sunderbans') || g.contains('sundarban')) return 'West Bengal Coast';
+    if (g.contains('andhra') || g.contains('godavari') || g.contains('visakhapatnam')) return 'Coastal Andhra & Godavari Basin';
+    if (g.contains('odisha') || g.contains('mahanadi') || g.contains('bhubaneswar')) return 'Odisha Coast & Mahanadi';
+    if (g.contains('kerala') || g.contains('thiruvananthapuram') || g.contains('kochi')) return 'Kerala (Monsoon-prone)';
+    if (g.contains('bengal') || g.contains('ganges') || g.contains('ganga') || g.contains('patna') || g.contains('varanasi')) return 'Ganga Plains (UP/Bihar)';
+    if (g.contains('gujarat') || g.contains('kutch') || g.contains('surat')) return 'Gujarat Coast';
+    if (g.contains('maharashtra') || g.contains('mumbai') || g.contains('konkan')) return 'Konkan & Goa';
+    if (g.contains('himachal') || g.contains('uttarakhand') || g.contains('shimla')) return 'Himachal / Uttarakhand (Hill floods)';
     if (g.contains('north') && g.contains('east')) return 'North-East Hill Flood Zones';
 
-    if (g.contains('central') ||
-        g.contains('madhya') ||
-        g.contains('chhattisgarh')) return 'Central India Flood Plains';
+    if (g.contains('central') || g.contains('madhya') || g.contains('chhattisgarh')) return 'Central India Flood Plains';
     return null;
   }
 

@@ -3,6 +3,7 @@ import joblib
 import os
 import traceback
 import requests
+from requests.adapters import HTTPAdapter, Retry
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -16,7 +17,8 @@ except ImportError:
 try:
     from flask_cors import CORS
 except ImportError:
-    def CORS(app):
+    def CORS(app, **kwargs):
+        pass
         pass
 
 def _collapse_feature_importances(feature_importances_transformed):
@@ -25,14 +27,14 @@ def _collapse_feature_importances(feature_importances_transformed):
     back to original feature names (like 'soil_type', 'rainfall_intensity', etc.)
     by summing contributions from each original feature.
     """
-    # Mapping from common patterns to original feature names
+    
     feature_mapping = {
         'soil_type': 'soil_type',
         'elevation_category': 'elevation_category',
         'flood_frequency': 'flood_frequency',
         'rainfall_intensity': 'rainfall_intensity',
         'distance_from_river': 'distance_from_river',
-        'rainfall': 'rainfall_intensity',  # Common abbreviation
+        'rainfall': 'rainfall_intensity', 
         'flood': 'flood_frequency',
         'elevation': 'elevation_category',
         'distance': 'distance_from_river',
@@ -40,25 +42,21 @@ def _collapse_feature_importances(feature_importances_transformed):
     
     collapsed = {}
     for feat_name, imp in feature_importances_transformed.items():
-        # Extract original feature name from transformed name
-        # Format: 'cat__feature_name_value' or 'num__feature_name'
+
         if '__' in feat_name:
             parts = feat_name.split('__')
             original_feat = parts[1]
-            # Remove the value suffix for categorical features (e.g., 'soil_type_clay' -> 'soil_type')
+   
             if parts[0] == 'cat' and '_' in original_feat:
-                # For categoricals, keep only the feature name (before the last underscore)
+          
                 original_feat = '_'.join(original_feat.split('_')[:-1])
         else:
             original_feat = feat_name
         
-        # Map to canonical name
+
         canonical_feat = feature_mapping.get(original_feat, original_feat)
-        
-        # Sum contributions from all one-hot encoded versions of same feature
         collapsed[canonical_feat] = collapsed.get(canonical_feat, 0.0) + imp
     
-    # Normalize
     total = sum(collapsed.values()) or 1.0
     return {k: v / total for k, v in collapsed.items()}
 
@@ -74,12 +72,12 @@ def _compute_feature_importance_permutation(clf, X_transformed, feature_names):
         base_pred = clf.predict(X_transformed)[0]
         base_proba = clf.predict_proba(X_transformed)[0]
         base_confidence = np.max(base_proba)
-        base_entropy = -np.sum(base_proba * np.log(base_proba + 1e-10))  # Add small epsilon to avoid log(0)
+        base_entropy = -np.sum(base_proba * np.log(base_proba + 1e-10))  
         
         importances = {}
         for i, col in enumerate(feature_names):
             X_perm = X_transformed.copy()
-            # Permute this feature column (shuffle values)
+  
             if isinstance(X_perm, pd.DataFrame):
                 X_perm.iloc[:, i] = np.random.permutation(X_perm.iloc[:, i].values)
             else:
@@ -90,15 +88,12 @@ def _compute_feature_importance_permutation(clf, X_transformed, feature_names):
             perm_confidence = np.max(perm_proba)
             perm_entropy = -np.sum(perm_proba * np.log(perm_proba + 1e-10))
             
-            # Importance = how much prediction changes when this feature is shuffled
             pred_change = 1.0 if perm_pred != base_pred else 0.0
             conf_change = abs(base_confidence - perm_confidence)
             entropy_change = abs(base_entropy - perm_entropy)
-            
-            # Weight: prediction change (70%), confidence change (15%), entropy change (15%)
+
             importances[col] = float(pred_change * 0.7 + conf_change * 0.15 + entropy_change * 0.15)
         
-        # Normalize
         total = sum(importances.values()) or 1.0
         importances = {k: v / total for k, v in importances.items()}
         
@@ -204,8 +199,13 @@ else:
 
 app = Flask(__name__)
 # Enable CORS for all routes - critical for Flutter web frontend
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
+# Use a shared requests session with retry logic for external API calls
+http_session = requests.Session()
+retries = Retry(total=3, backoff_factor=0.3, status_forcelist=[429, 500, 502, 503, 504], allowed_methods=["GET", "POST"])
+http_session.mount("https://", HTTPAdapter(max_retries=retries))
+http_session.mount("http://", HTTPAdapter(max_retries=retries))
 
 model = None
 if os.path.exists(MODEL_PATH):
@@ -228,6 +228,189 @@ def _ensure_model_loaded():
         except Exception as e:
             app.logger.error("Runtime model load failed: %s", e)
 
+
+# ============================================================================
+# OFFLINE MODE SUPPORT - New modular functions for online/offline switching
+# ============================================================================
+
+import json
+from pathlib import Path
+
+CACHE_DIR = os.path.join(os.path.dirname(__file__), 'cache')
+CACHE_FILE = os.path.join(CACHE_DIR, 'predictions_cache.json')
+RULES_FILE = os.path.join(os.path.dirname(__file__), 'data', 'region_rules.json')
+
+def _ensure_cache_dir():
+    """Create cache directory if it doesn't exist."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+
+
+def is_online():
+    """
+    Check if the application has internet connectivity.
+    Returns True if online, False if offline.
+    """
+    try:
+        response = http_session.get('https://www.google.com', timeout=4)
+        status = response.status_code == 200
+        if status:
+            app.logger.info("✓ Online Mode: Internet connectivity verified")
+        else:
+            app.logger.warning("⚠ Offline Mode: Internet check failed")
+        return status
+    except Exception as e:
+        app.logger.warning(f"⚠ Offline Mode: {str(e)}")
+        return False
+
+
+def save_cache(key, data):
+    """
+    Save prediction result to local cache (JSON file).
+    
+    Args:
+        key (str): Cache key (e.g., location hash or prediction ID)
+        data (dict): Data to cache
+    """
+    try:
+        _ensure_cache_dir()
+        
+        # Load existing cache or create new
+        cache = {}
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'r') as f:
+                    cache = json.load(f)
+            except json.JSONDecodeError:
+                app.logger.warning("⚠ Corrupted cache file, creating new cache")
+                cache = {}
+        
+        # Add timestamp and save
+        data['cached_at'] = datetime.now().isoformat()
+        cache[key] = data
+        
+        # Keep only last 100 entries to avoid bloat
+        if len(cache) > 100:
+            cache = dict(sorted(cache.items(), key=lambda x: x[1].get('cached_at', ''), reverse=True)[:100])
+        
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache, f, indent=2)
+        
+        app.logger.info(f"✓ Data Cached: Saved result for key '{key}'")
+        return True
+    except Exception as e:
+        app.logger.error(f"✗ Cache Error: Failed to save cache - {e}")
+        return False
+
+
+def load_cache(key):
+    """
+    Load prediction result from local cache.
+    
+    Args:
+        key (str): Cache key to retrieve
+    
+    Returns:
+        dict: Cached data if found, None otherwise
+    """
+    try:
+        if not os.path.exists(CACHE_FILE):
+            app.logger.debug("Cache file not found")
+            return None
+        
+        with open(CACHE_FILE, 'r') as f:
+            cache = json.load(f)
+        
+        if key in cache:
+            app.logger.info(f"✓ Cache Hit: Retrieved result for key '{key}'")
+            return cache[key]
+        
+        app.logger.debug(f"Cache miss for key '{key}'")
+        return None
+    except Exception as e:
+        app.logger.error(f"✗ Cache Error: Failed to load cache - {e}")
+        return None
+
+
+def rule_based_prediction(latitude, longitude):
+    """
+    Fallback prediction using region rules (JSON) when offline and no cache.
+    Uses geographical proximity to match regions and apply default rules.
+    
+    Args:
+        latitude (float): User latitude
+        longitude (float): User longitude
+    
+    Returns:
+        dict: Prediction result based on rules, or None if no match
+    """
+    try:
+        if not os.path.exists(RULES_FILE):
+            app.logger.warning(f"⚠ Rules file not found: {RULES_FILE}")
+            return None
+        
+        with open(RULES_FILE, 'r') as f:
+            rules = json.load(f)
+        
+        # Find matching region by location
+        matched_rule = None
+        for rule in rules:
+            if (rule['min_lat'] <= latitude <= rule['max_lat'] and
+                rule['min_lon'] <= longitude <= rule['max_lon']):
+                matched_rule = rule
+                break
+        
+        if not matched_rule:
+            app.logger.warning(f"⚠ No matching region rule for coordinates ({latitude}, {longitude})")
+            return None
+        
+        # Use rule values as inferred features
+        region_name = matched_rule.get('name', 'Unknown Region')
+        
+        # Simple heuristic: combine features to predict risk
+        risk_score = 0
+        
+        # Weight: flood_frequency (40%), distance_from_river (30%), rainfall (20%), elevation (10%)
+        flood_freq = matched_rule.get('flood_frequency', 2) / 5.0  # Scale 0-1
+        dist_from_river = 1.0 - (min(matched_rule.get('distance_from_river', 2), 5) / 5.0)  # Closer = higher risk
+        rainfall = min(matched_rule.get('rainfall_intensity', 100) / 300, 1.0)  # Scale 0-1
+        elevation_val = 1.0 if matched_rule.get('elevation_category') == 'low' else 0.5 if matched_rule.get('elevation_category') == 'mid' else 0.2
+        
+        risk_score = (flood_freq * 0.40 + dist_from_river * 0.30 + rainfall * 0.20 + elevation_val * 0.10)
+        
+        # Map score to risk level
+        if risk_score > 0.65:
+            risk_level = 'High'
+        elif risk_score > 0.35:
+            risk_level = 'Medium'
+        else:
+            risk_level = 'Low'
+        
+        result = {
+            'risk_level': risk_level,
+            'confidence': min(risk_score, 1.0),
+            'explanation': f'Rule-based prediction for {region_name}. This region typically has: '
+                          f'flood frequency={matched_rule.get("flood_frequency")}/5, '
+                          f'elevation={matched_rule.get("elevation_category")}, '
+                          f'rainfall={matched_rule.get("rainfall_intensity")}mm.',
+            'recommendation': 'For critical decisions, conduct on-site assessment.',
+            'region': region_name,
+            'inferred_features': {
+                'soil_type': matched_rule.get('soil_type', 'unknown'),
+                'flood_frequency': matched_rule.get('flood_frequency', 'unknown'),
+                'rainfall_intensity': matched_rule.get('rainfall_intensity', 'unknown'),
+                'elevation_category': matched_rule.get('elevation_category', 'unknown'),
+                'distance_from_river': matched_rule.get('distance_from_river', 'unknown'),
+            },
+            'disclaimer': 'Offline prediction using region rules only. Limited accuracy without real-time data.',
+            'mode': 'Fallback (Using Region Rules)'
+        }
+        
+        app.logger.info(f"✓ Fallback Mode: Predicted {risk_level} risk using region rules for {region_name}")
+        return result
+    
+    except Exception as e:
+        app.logger.error(f"✗ Rule-based prediction failed: {e}")
+        return None
 
 
 @app.route("/health", methods=["GET"])
@@ -419,7 +602,7 @@ def _fetch_recent_rainfall_mm(lat, lon):
             f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
             "&hourly=precipitation&past_days=1&timezone=UTC"
         )
-        r = requests.get(url, timeout=8)
+        r = http_session.get(url, timeout=8)
         if r.status_code == 200:
             j = r.json()
             hourly = j.get('hourly', {})
@@ -436,7 +619,7 @@ def _fetch_elevation_m(lat, lon):
     """Fetch elevation in meters using open-elevation (free service) or Open-Meteo fallback"""
     try:
         url = f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lon}"
-        r = requests.get(url, timeout=6)
+        r = http_session.get(url, timeout=6)
         if r.status_code == 200:
             j = r.json()
             results = j.get('results') or []
@@ -449,7 +632,7 @@ def _fetch_elevation_m(lat, lon):
     
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
-        r = requests.get(url, timeout=6)
+        r = http_session.get(url, timeout=6)
         if r.status_code == 200:
             j = r.json()
             elev = j.get('elevation')
@@ -590,174 +773,153 @@ def predict_by_location():
     lon = data.get('longitude')
     if lat is None or lon is None:
         return jsonify({'error': 'Missing latitude or longitude'}), 400
-    
-    return predict_v1()
 
+    return predict_v1()
 
 
 @app.route('/api/v1/predict', methods=['POST'])
 def predict_v1():
-    """Versioned predict endpoint. Accepts either explicit features or only latitude/longitude.
-
-    If latitude & longitude are provided, the backend will fetch environmental
-    data (rainfall, elevation) and lookup regional flood/soil information.
-    """
-    global model
     try:
-        data = request.get_json(force=True)
-        app.logger.debug(f"Predict request data: {data}")
-
-     
-        lat = data.get('latitude')
-        lon = data.get('longitude')
-        if lat is not None and lon is not None:
-            try:
-                lat = float(lat); lon = float(lon)
-            except Exception:
-                return jsonify({'error': 'Latitude and longitude must be numeric'}), 400
-
-            row_features, meta = _generate_features_from_location(lat, lon)
-            row = {
-                'soil_type': row_features['soil_type'],
-                'flood_frequency': float(row_features['flood_frequency']),
-                'rainfall_intensity': float(row_features['rainfall_intensity']),
-                'elevation_category': row_features['elevation_category'],
-                'distance_from_river': float(row_features.get('distance_from_river', 0.0)),
-                'rainfall_category': row_features.get('rainfall_category')
-            }
-        else:
-           
-            required = ['soil_type', 'flood_frequency', 'rainfall_intensity', 'elevation_category']
-            for k in required:
-                if k not in data:
-                    return jsonify({'error': f'Missing field: {k}'}), 400
-            row = {
-                'soil_type': data.get('soil_type'),
-                'flood_frequency': float(data.get('flood_frequency')),
-                'rainfall_intensity': float(data.get('rainfall_intensity')),
-                'elevation_category': data.get('elevation_category'),
-                'distance_from_river': float(data.get('distance_from_river', 0.0)),
-            }
-            meta = {'sources': {'manual_input': True}}
-
-        import pandas as pd
-        X = pd.DataFrame([row])
-
         _ensure_model_loaded()
-        if model is None:
-            return jsonify({'error': 'Model not loaded. Train and save a model with model/train_model.py'}), 500
 
-      
-        if isinstance(model, dict):
-            rf = model.get('rf')
-            dt = model.get('dt')
+        data = request.get_json() or {}
+
+        def to_float(x, default=0.0):
+            try:
+                if x is None:
+                    return default
+                return float(x)
+            except Exception:
+                return default
+
+        raw_lat = data.get('latitude')
+        raw_lon = data.get('longitude')
+        latitude = to_float(raw_lat, None)
+        longitude = to_float(raw_lon, None)
+
+        soil_type = data.get('soil_type')
+        flood_frequency = data.get('flood_frequency')
+        rainfall_intensity = data.get('rainfall_intensity')
+        elevation_category = data.get('elevation_category')
+        distance_from_river = data.get('distance_from_river')
+        region_name = data.get('region') or data.get('Region')
+
+        has_manual_features = soil_type is not None and flood_frequency is not None and rainfall_intensity is not None and elevation_category is not None
+
+        features = None
+        location_payload = None
+
+        if has_manual_features:
+            features = {
+                'soil_type': str(soil_type).lower(),
+                'flood_frequency': to_float(flood_frequency, 0.0),
+                'rainfall_intensity': to_float(rainfall_intensity, 0.0),
+                'elevation_category': str(elevation_category).lower(),
+                'distance_from_river': to_float(distance_from_river, 2.0),
+            }
+            if latitude is not None and longitude is not None:
+                location_payload = {'latitude': latitude, 'longitude': longitude}
+            if region_name is None and latitude is not None and longitude is not None:
+                rule = _lookup_region_rule(latitude, longitude)
+                if rule:
+                    region_name = rule.get('name')
         else:
-            rf = model
-            dt = None
-        
-        # Compute feature importances for this specific prediction
-        importances = _local_feature_importance(rf, X) if hasattr(rf, 'named_steps') else {}
+            if latitude is None or longitude is None:
+                return jsonify({'error': 'Missing latitude or longitude for prediction.'}), 400
 
+            location_payload = {'latitude': latitude, 'longitude': longitude}
 
-        
-        try:
-            proba = rf.predict_proba(X)[0]
-            classes = list(rf.classes_)
-            probs = {c: float(p) for c, p in zip(classes, proba)}
-            pred = rf.predict(X)[0]
-            confidence = float(probs.get(pred, max(probs.values())))
-        except Exception:
-            pred = rf.predict(X)[0]
-            probs = None
-            confidence = 1.0
+            if not is_online():
+                app.logger.info('⚠ Running in OFFLINE mode')
+                cache_key = f'loc_{round(latitude, 3)}_{round(longitude, 3)}'
+                cached = load_cache(cache_key)
+                if cached:
+                    cached['mode'] = 'Offline (Cache)'
+                    return jsonify(cached)
 
-        
-        dt_info = None
-        agree = None
-        if dt is not None:
-            try:
-                dt_pred = dt.predict(X)[0]
-                try:
-                    dt_proba = dt.predict_proba(X)[0]
-                    dt_conf = float(dt_proba[list(dt.classes_).index(dt_pred)])
-                except Exception:
-                    dt_conf = 1.0
-                dt_info = {'prediction': dt_pred, 'confidence': dt_conf}
-                agree = (str(dt_pred).lower() == str(pred).lower())
-            except Exception:
-                dt_info = None
+                fallback = rule_based_prediction(latitude, longitude)
+                if fallback:
+                    return jsonify(fallback)
 
-       
-        def _postprocess(pred, confidence, row):
-          
-            try:
-                rain = float(row.get('rainfall_intensity', 0.0))
-                elev = row.get('elevation_category')
-                flood = float(row.get('flood_frequency', 0.0))
-                dist = float(row.get('distance_from_river', 999.0))
+                return jsonify({'error': 'Offline mode: no data available', 'mode': 'offline-failed'}), 503
 
-                if str(pred).lower() == 'high' and rain < 20.0 and elev == 'high' and confidence < 0.95:
-                    return 'Medium', min(confidence + 0.05, 0.95), 'Adjusted from High to Medium because of low recent rainfall and high elevation.'
+            app.logger.info('✓ Running in ONLINE mode')
+            generated_features, feature_meta = _generate_features_from_location(latitude, longitude)
+            if not generated_features:
+                return jsonify({'error': 'Unable to generate features'}), 500
 
-                
-                if str(pred).lower() != 'high':
-                    if rain >= 120.0 and flood >= 3.0 and dist <= 1.5:
-                        
-                        return 'High', min(max(confidence, 0.6) + 0.05, 0.99), 'Upgraded to High due to heavy rain, frequent flooding and proximity to river.'
-            except Exception:
-                pass
-            return pred, confidence, None
+            features = dict(generated_features)
+            if region_name is None:
+                region_name = feature_meta.get('region')
 
-        adj_pred, adj_conf, adj_note = _postprocess(pred, confidence, row)
+            # Keep the model input aligned with the training schema.
+            features.pop('rainfall_category', None)
 
-        # Compute region-adjusted importances instead of global static importances
-        base_importances = importances if importances else {}
-        rule = _lookup_region_rule(lat, lon) if lat is not None and lon is not None else None
-        importances = _compute_region_adjusted_importances(base_importances, row, rule, lat, lon)
+        # Sanity: should have feature map now
+        if features is None:
+            return jsonify({'error': 'Could not derive features for prediction.', 'mode': 'error'}), 500
 
-        explanation = _simple_explanation(row, importances)
-        if meta.get('region'):
-            explanation += f" Region: {meta.get('region')}"
-        if adj_note:
-            explanation += ' ' + adj_note
+        X = pd.DataFrame([features])
 
-        recommendation = _recommendation_for_risk(adj_pred)
+        pred = model['rf'].predict(X)[0]
+        proba = model['rf'].predict_proba(X)[0]
 
-        fi_list = sorted([(k, float(v)) for k, v in importances.items()], key=lambda x: x[1], reverse=True)
-
-        resp = {
-            'risk_level': adj_pred,
-            'confidence': float(adj_conf),
-            'probabilities': probs,
-            'explanation': explanation,
-            'recommendation': recommendation,
-            'feature_importances': [{'feature': f, 'importance': imp} for f, imp in fi_list],
-            'influencing_factors': explanation.split('. '),
-            'disclaimer': 'Predictions are indicative and based on available environmental data.'
+        predicted_probs = {
+            'low': float(proba[0]) if len(proba) > 0 else 0.0,
+            'medium': float(proba[1]) if len(proba) > 1 else 0.0,
+            'high': float(proba[2]) if len(proba) > 2 else 0.0,
         }
 
+        computed_importances = _local_feature_importance(model['rf'], X) or {}
 
-        if 'region' in meta:
-            resp['region'] = meta['region']
-        if lat is not None and lon is not None:
-            resp['location'] = {'latitude': lat, 'longitude': lon}
-            resp['inferred_features'] = {**row, 'meta_sources': meta.get('sources', {})}
+        feature_importances = sorted(
+            [{'feature': k, 'importance': float(v)} for k, v in computed_importances.items()],
+            key=lambda e: e['importance'],
+            reverse=True,
+        )
 
-        if dt_info is not None:
-            resp['model_comparison'] = {'decision_tree': dt_info, 'agree': agree}
+        influences = []
+        if computed_importances:
+            influences = [f"{k}: {(v*100):.1f}%" for k, v in computed_importances.items()]
 
-        return jsonify(resp), 200
+        result = {
+            'risk_level': pred,
+            'confidence': float(max(proba)) if len(proba) > 0 else 0.0,
+            'explanation': _simple_explanation(features, computed_importances),
+            'recommendation': _recommendation_for_risk(pred),
+            'region': region_name,
+            'location': location_payload,
+            'inferred_features': features,
+            'feature_importances': feature_importances,
+            'influencing_factors': influences,
+            'probabilities': predicted_probs,
+            'disclaimer': 'Online prediction based on model + region data. For critical decisions, verify with local soil experts.',
+            'mode': 'Online (ML Model)',
+        }
+
+        if location_payload is not None:
+            cache_key = f"loc_{round(location_payload['latitude'], 3)}_{round(location_payload['longitude'], 3)}"
+            save_cache(cache_key, result)
+
+        return jsonify(result)
 
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({'error': 'Server error', 'details': str(e)}), 500
+        app.logger.error(f'Prediction failed: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
+# ==============================
+# 🔥 FIXED ROUTE (IMPORTANT)
+# ==============================
 
 @app.route("/predict", methods=["POST"])
 def predict():
-  
     return predict_v1()
 
+
+# ==============================
+# 🚀 RUN APP
+# ==============================
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

@@ -1,0 +1,437 @@
+{
+  "loc_20.3590_85.8192": {
+    "risk_level": "High",
+    "confidence": 0.7657247664250509,
+    "probabilities": {
+      "High": 0.7657247664250509,
+      "Low": 0.2341794371100113,
+      "Medium": 9.579646493779558e-05
+    },
+    "explanation": "Lower elevation ('low') is more flood-prone and increases risk. Very close to river (0.2 km) which raises flood exposure. Light rainfall (5 mm) less likely to cause acute saturation. Region: Coastal Odisha",
+    "recommendation": "High risk: Early inspection and monitoring is recommended before land reuse or heavy activity. This supports disaster response planning and risk mitigation.",
+    "feature_importances": [
+      {
+        "feature": "elevation_category",
+        "importance": 0.3305941136762918
+      },
+      {
+        "feature": "distance_from_river",
+        "importance": 0.2304466039327623
+      },
+      {
+        "feature": "rainfall_intensity",
+        "importance": 0.2222229188801238
+      },
+      {
+        "feature": "soil_type",
+        "importance": 0.15424580622416423
+      },
+      {
+        "feature": "flood_frequency",
+        "importance": 0.06249055728665787
+      }
+    ],
+    "influencing_factors": [
+      "Lower elevation ('low') is more flood-prone and increases risk",
+      "Very close to river (0.2 km) which raises flood exposure",
+      "Light rainfall (5 mm) less likely to cause acute saturation",
+      "Region: Coastal Odisha"
+    ],
+    "disclaimer": "Predictions are indicative and based on available environmental data.",
+    "region": "Coastal Odisha",
+    "location": {
+      "latitude": 20.358983396742868,
+      "longitude": 85.81916541415791
+    },
+    "inferred_features": {
+      "soil_type": "clay",
+      "flood_frequency": 4.0,
+      "rainfall_intensity": 4.7,
+      "elevation_category": "low",
+      "distance_from_river": 0.2,
+      "rainfall_category": "Light",
+      "meta_sources": {
+        "rainfall": "open-meteo",
+        "elevation": "open-meteo",
+        "region_rule": "Coastal Odisha"
+      }
+    },
+    "model_comparison": {
+      "decision_tree": {
+        "prediction": "High",
+        "confidence": 1.0
+      },
+      "agree": true
+    },
+    "cached_at": "2026-03-22T13:29:11.507772"
+  },
+  "20.358_85.819": {
+    "risk_level": "High",
+    "confidence": 0.9994370594944678,
+    "mode": "Online (ML Model)",
+    "features": {
+      "soil_type": "clay",
+      "flood_frequency": 4,
+      "rainfall_intensity": 200,
+      "elevation_category": "low",
+      "distance_from_river": 0.2
+    },
+    "cached_at": "2026-03-23T01:34:49.100965"
+  },
+  "20.359_85.819": {
+    "risk_level": "High",
+    "confidence": 0.9994370594944678,
+    "mode": "Online (ML Model)",
+    "features": {
+      "soil_type": "clay",
+      "flood_frequency": 4,
+      "rainfall_intensity": 200,
+      "elevation_category": "low",
+      "distance_from_river": 0.2
+    },
+    "cached_at": "2026-03-23T01:50:40.374300"
+  },
+  "20.364_85.818": {
+    "risk_level": "High",
+    "confidence": 0.9994370594944678,
+    "mode": "Online (ML Model)",
+    "features": {
+      "soil_type": "clay",
+      "flood_frequency": 4,
+      "rainfall_intensity": 200,
+      "elevation_category": "low",
+      "distance_from_river": 0.2
+    },
+    "cached_at": "2026-03-23T02:26:21.364934"
+  },
+  "loc_20.359_85.819": {
+    "risk_level": "High",
+    "confidence": 0.9994370594944678,
+    "explanation": "Lower elevation ('low') is more flood-prone and increases risk. Heavy rainfall (200 mm) raises landslip and saturation risk. Soil type 'clay' can affect post-flood stability.",
+    "recommendation": "High risk: Early inspection and monitoring is recommended before land reuse or heavy activity. This supports disaster response planning and risk mitigation.",
+    "region": "Bhubaneswar (M.Corp.)",
+    "location": {
+      "latitude": 20.358983396742868,
+      "longitude": 85.81916541415791
+    },
+    "inferred_features": {
+      "soil_type": "clay",
+      "flood_frequency": 4,
+      "rainfall_intensity": 200,
+      "elevation_category": "low",
+      "distance_from_river": 0.2
+    },
+    "feature_importances": [
+      {
+        "feature": "elevation_category",
+        "importance": 0.37768594539989314
+      },
+      {
+        "feature": "rainfall_intensity",
+        "importance": 0.18134121427077973
+      },
+      {
+        "feature": "soil_type",
+        "importance": 0.17621751488529297
+      },
+      {
+        "feature": "distance_from_river",
+        "importance": 0.17551521109006324
+      },
+      {
+        "feature": "flood_frequency",
+        "importance": 0.08924011435397095
+      }
+    ],
+    "influencing_factors": [
+      "soil_type: 17.6%",
+      "elevation_category: 37.8%",
+      "flood_frequency: 8.9%",
+      "rainfall_intensity: 18.1%",
+      "distance_from_river: 17.6%"
+    ],
+    "probabilities": {
+      "low": 0.9994370594944678,
+      "medium": 0.0,
+      "high": 0.000562940505532253
+    },
+    "disclaimer": "Online prediction based on model + region data. For critical decisions, verify with local soil experts.",
+    "mode": "Online (ML Model)",
+    "cached_at": "2026-03-23T02:32:03.178669"
+  },
+  "loc_20.363_85.819": {
+    "risk_level": "High",
+    "confidence": 0.9994370594944678,
+    "explanation": "Lower elevation ('low') is more flood-prone and increases risk. Heavy rainfall (200 mm) raises landslip and saturation risk. Soil type 'clay' can affect post-flood stability.",
+    "recommendation": "High risk: Early inspection and monitoring is recommended before land reuse or heavy activity. This supports disaster response planning and risk mitigation.",
+    "region": "Bhubaneswar (M.Corp.)",
+    "location": {
+      "latitude": 20.363325926923075,
+      "longitude": 85.81919647692308
+    },
+    "inferred_features": {
+      "soil_type": "clay",
+      "flood_frequency": 4,
+      "rainfall_intensity": 200,
+      "elevation_category": "low",
+      "distance_from_river": 0.2
+    },
+    "feature_importances": [
+      {
+        "feature": "elevation_category",
+        "importance": 0.37768594539989314
+      },
+      {
+        "feature": "rainfall_intensity",
+        "importance": 0.18134121427077973
+      },
+      {
+        "feature": "soil_type",
+        "importance": 0.17621751488529297
+      },
+      {
+        "feature": "distance_from_river",
+        "importance": 0.17551521109006324
+      },
+      {
+        "feature": "flood_frequency",
+        "importance": 0.08924011435397095
+      }
+    ],
+    "influencing_factors": [
+      "soil_type: 17.6%",
+      "elevation_category: 37.8%",
+      "flood_frequency: 8.9%",
+      "rainfall_intensity: 18.1%",
+      "distance_from_river: 17.6%"
+    ],
+    "probabilities": {
+      "low": 0.9994370594944678,
+      "medium": 0.0,
+      "high": 0.000562940505532253
+    },
+    "disclaimer": "Online prediction based on model + region data. For critical decisions, verify with local soil experts.",
+    "mode": "Online (ML Model)",
+    "cached_at": "2026-03-23T02:32:14.478451"
+  },
+  "loc_20.364_85.818": {
+    "risk_level": "High",
+    "confidence": 0.9994370594944678,
+    "explanation": "Lower elevation ('low') is more flood-prone and increases risk. Heavy rainfall (200 mm) raises landslip and saturation risk. Soil type 'clay' can affect post-flood stability.",
+    "recommendation": "High risk: Early inspection and monitoring is recommended before land reuse or heavy activity. This supports disaster response planning and risk mitigation.",
+    "region": "Bhubaneswar (M.Corp.)",
+    "location": {
+      "latitude": 20.3637616,
+      "longitude": 85.8180959
+    },
+    "inferred_features": {
+      "soil_type": "clay",
+      "flood_frequency": 4,
+      "rainfall_intensity": 200,
+      "elevation_category": "low",
+      "distance_from_river": 0.2
+    },
+    "feature_importances": [
+      {
+        "feature": "elevation_category",
+        "importance": 0.37768594539989314
+      },
+      {
+        "feature": "rainfall_intensity",
+        "importance": 0.18134121427077973
+      },
+      {
+        "feature": "soil_type",
+        "importance": 0.17621751488529297
+      },
+      {
+        "feature": "distance_from_river",
+        "importance": 0.17551521109006324
+      },
+      {
+        "feature": "flood_frequency",
+        "importance": 0.08924011435397095
+      }
+    ],
+    "influencing_factors": [
+      "soil_type: 17.6%",
+      "elevation_category: 37.8%",
+      "flood_frequency: 8.9%",
+      "rainfall_intensity: 18.1%",
+      "distance_from_river: 17.6%"
+    ],
+    "probabilities": {
+      "low": 0.9994370594944678,
+      "medium": 0.0,
+      "high": 0.000562940505532253
+    },
+    "disclaimer": "Online prediction based on model + region data. For critical decisions, verify with local soil experts.",
+    "mode": "Online (ML Model)",
+    "cached_at": "2026-03-23T02:45:49.443441"
+  },
+  "loc_24.664_93.906": {
+    "risk_level": "Low",
+    "confidence": 0.7129275134785338,
+    "explanation": "Elevation ('high') provides some protection against flooding. Light rainfall (12 mm) less likely to cause acute saturation. Soil type 'silt' can affect post-flood stability.",
+    "recommendation": "Low risk: No immediate action is required under current conditions. Routine observation and standard land use practices are considered sufficient.",
+    "region": "Wangoi",
+    "location": {
+      "latitude": 24.6637,
+      "longitude": 93.9063
+    },
+    "inferred_features": {
+      "soil_type": "silt",
+      "rainfall_intensity": 12.2,
+      "flood_frequency": 1.0,
+      "elevation_category": "high",
+      "distance_from_river": 2.0
+    },
+    "feature_importances": [
+      {
+        "feature": "elevation_category",
+        "importance": 0.37768594539989314
+      },
+      {
+        "feature": "rainfall_intensity",
+        "importance": 0.18134121427077973
+      },
+      {
+        "feature": "soil_type",
+        "importance": 0.17621751488529297
+      },
+      {
+        "feature": "distance_from_river",
+        "importance": 0.17551521109006324
+      },
+      {
+        "feature": "flood_frequency",
+        "importance": 0.08924011435397095
+      }
+    ],
+    "influencing_factors": [
+      "soil_type: 17.6%",
+      "elevation_category: 37.8%",
+      "flood_frequency: 8.9%",
+      "rainfall_intensity: 18.1%",
+      "distance_from_river: 17.6%"
+    ],
+    "probabilities": {
+      "low": 0.14989319249468927,
+      "medium": 0.7129275134785338,
+      "high": 0.137179294026777
+    },
+    "disclaimer": "Online prediction based on model + region data. For critical decisions, verify with local soil experts.",
+    "mode": "Online (ML Model)",
+    "cached_at": "2026-03-23T02:49:07.648068"
+  },
+  "loc_26.33_91.004": {
+    "risk_level": "High",
+    "confidence": 0.5067314297976426,
+    "explanation": "Lower elevation ('low') is more flood-prone and increases risk. Moderate rainfall (75 mm) increases soil moisture and erosion potential. Soil type 'silt' can affect post-flood stability.",
+    "recommendation": "High risk: Early inspection and monitoring is recommended before land reuse or heavy activity. This supports disaster response planning and risk mitigation.",
+    "region": "Barpeta",
+    "location": {
+      "latitude": 26.3304,
+      "longitude": 91.0041
+    },
+    "inferred_features": {
+      "soil_type": "silt",
+      "rainfall_intensity": 74.6,
+      "flood_frequency": 1.0,
+      "elevation_category": "low",
+      "distance_from_river": 2.0
+    },
+    "feature_importances": [
+      {
+        "feature": "elevation_category",
+        "importance": 0.37768594539989314
+      },
+      {
+        "feature": "rainfall_intensity",
+        "importance": 0.18134121427077973
+      },
+      {
+        "feature": "soil_type",
+        "importance": 0.17621751488529297
+      },
+      {
+        "feature": "distance_from_river",
+        "importance": 0.17551521109006324
+      },
+      {
+        "feature": "flood_frequency",
+        "importance": 0.08924011435397095
+      }
+    ],
+    "influencing_factors": [
+      "soil_type: 17.6%",
+      "elevation_category: 37.8%",
+      "flood_frequency: 8.9%",
+      "rainfall_intensity: 18.1%",
+      "distance_from_river: 17.6%"
+    ],
+    "probabilities": {
+      "low": 0.5067314297976426,
+      "medium": 0.3940028769893797,
+      "high": 0.09926569321297775
+    },
+    "disclaimer": "Online prediction based on model + region data. For critical decisions, verify with local soil experts.",
+    "mode": "Online (ML Model)",
+    "cached_at": "2026-03-23T02:50:38.792740"
+  },
+  "loc_20.3_85.817": {
+    "risk_level": "High",
+    "confidence": 0.7657247664250509,
+    "explanation": "Lower elevation ('low') is more flood-prone and increases risk. Light rainfall (6 mm) less likely to cause acute saturation. Soil type 'clay' can affect post-flood stability.",
+    "recommendation": "High risk: Early inspection and monitoring is recommended before land reuse or heavy activity. This supports disaster response planning and risk mitigation.",
+    "region": "Bhubaneswar (M.Corp.)",
+    "location": {
+      "latitude": 20.2997,
+      "longitude": 85.8173
+    },
+    "inferred_features": {
+      "soil_type": "clay",
+      "rainfall_intensity": 6.3,
+      "flood_frequency": 4.0,
+      "elevation_category": "low",
+      "distance_from_river": 0.2
+    },
+    "feature_importances": [
+      {
+        "feature": "elevation_category",
+        "importance": 0.37768594539989314
+      },
+      {
+        "feature": "rainfall_intensity",
+        "importance": 0.18134121427077973
+      },
+      {
+        "feature": "soil_type",
+        "importance": 0.17621751488529297
+      },
+      {
+        "feature": "distance_from_river",
+        "importance": 0.17551521109006324
+      },
+      {
+        "feature": "flood_frequency",
+        "importance": 0.08924011435397095
+      }
+    ],
+    "influencing_factors": [
+      "soil_type: 17.6%",
+      "elevation_category: 37.8%",
+      "flood_frequency: 8.9%",
+      "rainfall_intensity: 18.1%",
+      "distance_from_river: 17.6%"
+    ],
+    "probabilities": {
+      "low": 0.7657247664250509,
+      "medium": 0.2341794371100113,
+      "high": 9.579646493779558e-05
+    },
+    "disclaimer": "Online prediction based on model + region data. For critical decisions, verify with local soil experts.",
+    "mode": "Online (ML Model)",
+    "cached_at": "2026-03-23T03:32:48.220365"
+  }
+}

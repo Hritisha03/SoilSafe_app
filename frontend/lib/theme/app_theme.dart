@@ -13,7 +13,7 @@ class AppTheme {
   
   static const Color backgroundColor = Color(0xFFF6F8F6);
   static const Color surfaceColor = Color(0xFFFFFFFF);
-  static const Color dividerColor = Color(0xFFE8EBE8);
+  static const Color dividerColor  = Color(0xFFE8EBE8);
   
   static const Color textPrimary = Colors.black87;
   static const Color textSecondary = Color(0xFF666666);
@@ -41,7 +41,8 @@ class AppTheme {
       // Card Theme
       cardTheme: CardThemeData(
         color: surfaceColor,
-        elevation: 0,
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.08),
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),

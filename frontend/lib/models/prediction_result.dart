@@ -4,27 +4,55 @@ class PredictionResult {
   final Map<String, dynamic>? probabilities;
   final String explanation;
   final String? recommendation;
-  final List<dynamic>? featureImportances; 
+  final List<dynamic>? featureImportances;
   final List<String>? influencingFactors;
   final String? region;
-  final Map<String, dynamic>? location; 
+  final Map<String, dynamic>? location;
   final Map<String, dynamic>? inferredFeatures;
   final String? disclaimer;
 
-  PredictionResult({required this.risk, this.confidence, this.probabilities, required this.explanation, this.recommendation, this.featureImportances, this.influencingFactors, this.region, this.location, this.inferredFeatures, this.disclaimer});
+  PredictionResult(
+      {required this.risk,
+      this.confidence,
+      this.probabilities,
+      required this.explanation,
+      this.recommendation,
+      this.featureImportances,
+      this.influencingFactors,
+      this.region,
+      this.location,
+      this.inferredFeatures,
+      this.disclaimer});
 
   factory PredictionResult.fromJson(Map<String, dynamic> json) {
     return PredictionResult(
       risk: json['risk_level'] ?? json['risk'] ?? 'Unknown',
-      confidence: (json['confidence'] != null) ? (json['confidence'] as num).toDouble() : null,
-      probabilities: json['probabilities'] != null ? Map<String, dynamic>.from(json['probabilities']) : null,
+      confidence: (json['confidence'] != null)
+          ? (json['confidence'] as num).toDouble()
+          : null,
+      probabilities: json['probabilities'] != null
+          ? Map<String, dynamic>.from(json['probabilities'])
+          : null,
       explanation: json['explanation'] ?? '',
       recommendation: json['recommendation'],
-      featureImportances: json['feature_importances'] != null ? List<dynamic>.from(json['feature_importances']) : null,
-      influencingFactors: json['influencing_factors'] != null ? List<String>.from(json['influencing_factors'].map((e) => e.toString())) : null,
-      region: json['region'],
-      location: json['location'] != null ? Map<String, dynamic>.from(json['location']) : null,
-      inferredFeatures: json['inferred_features'] != null ? Map<String, dynamic>.from(json['inferred_features']) : null,
+      featureImportances: json['feature_importances'] != null
+          ? List<dynamic>.from(json['feature_importances'])
+          : (json['feature_importance'] != null
+              ? List<dynamic>.from(json['feature_importance'])
+              : null),
+      influencingFactors: json['influencing_factors'] != null
+          ? List<String>.from(
+              json['influencing_factors'].map((e) => e.toString()))
+          : null,
+      region: json['region'] ?? json['Region'],
+      location: json['location'] != null
+          ? Map<String, dynamic>.from(json['location'])
+          : null,
+      inferredFeatures: json['inferred_features'] != null
+          ? Map<String, dynamic>.from(json['inferred_features'])
+          : (json['features'] != null
+              ? Map<String, dynamic>.from(json['features'])
+              : null),
       disclaimer: json['disclaimer'],
     );
   }
